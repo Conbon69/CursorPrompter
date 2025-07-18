@@ -16,6 +16,7 @@ import streamlit as st
 # === 1. import the pipeline you wrote earlier ================================
 from main import run_pipeline  # same dir
 import auth
+from db_helpers import save_scraped_result, get_all_scraped_results, save_to_session_state, get_session_results, mark_post_scraped, is_post_already_scraped
 auth.handle_magic_link()
 
 # === 1.5. Quota management ===================================================
@@ -29,13 +30,12 @@ def can_scrape():
     limit = AUTH_LIMIT if is_auth else FREE_LIMIT
     used = st.session_state[usage_key]
     if used >= limit:
-        if not is_auth:
-            st.error(f"Daily limit reached ({FREE_LIMIT}). Please sign in for more scrapes!")
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("🔐 Sign In Now", use_container_width=True):
-                    modal = auth.require_signup()
-            return False
+            if not is_auth:
+        st.error(f"Daily limit reached ({FREE_LIMIT}). Please sign in for more scrapes!")
+        if st.button("🔐 Sign In Now", use_container_width=True):
+            st.session_state.show_signup = True
+            st.rerun()
+        return False
         else:
             st.warning(f"Daily limit reached ({AUTH_LIMIT}). Come back tomorrow!")
             return False
@@ -55,33 +55,19 @@ def show_quota_status():
     st.sidebar.markdown(f"**{remaining}** remaining today")
 
 # === 2. DB helpers ===========================================================
+# Legacy SQLite functions (kept for backward compatibility)
 DB_FILE = Path("scraper.db")
 OUT_FILE = Path("results.jsonl")
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS scraped_posts (
-               post_id TEXT PRIMARY KEY,
-               scraped_at TEXT
-           )"""
-    )
-    conn.commit()
-    return conn
+    # This is now a no-op since we're using Supabase
+    return None
 
 def already_scraped(conn, post_id: str) -> bool:
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM scraped_posts WHERE post_id=?", (post_id,))
-    return cur.fetchone() is not None
+    return is_post_already_scraped(post_id)
 
 def mark_scraped(conn, post_id: str):
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT OR IGNORE INTO scraped_posts VALUES (?,?)",
-        (post_id, datetime.utcnow().isoformat()),
-    )
-    conn.commit()
+    mark_post_scraped(post_id)
 
 # === 3. Streamlit UI =========================================================
 st.set_page_config(
@@ -102,7 +88,7 @@ if user:
 else:
     st.sidebar.info("👤 Anonymous user (2 scrapes/day)")
     if st.sidebar.button("🔐 Sign In", use_container_width=True):
-        modal = auth.require_signup()
+        st.session_state.show_signup = True
 
 subs = st.sidebar.text_input(
     "Subreddits (comma‑separated)", 
@@ -122,18 +108,59 @@ analyze_url_btn = st.sidebar.button("Analyze URL", use_container_width=True)
 
 st.title("💡 Reddit → SaaS Idea Finder")
 
-# Load existing JSONL (if any) for quick display
-if OUT_FILE.exists():
-    df = pd.read_json(OUT_FILE, lines=True)
-    st.write(f"📊 Total records loaded: {len(df)}")
-    # Use map instead of applymap for pandas DataFrame
-    st.dataframe(df[["reddit", "analysis", "solution"]].map(str), use_container_width=True)
-    st.download_button(
-        label="⬇️ Download full JSONL",
-        data=OUT_FILE.read_bytes(),
-        file_name="results.jsonl",
-        mime="application/json",
-    )
+# Show signup form if requested
+if st.session_state.get("show_signup", False):
+    auth.require_signup()
+    if st.button("← Back to Scraper"):
+        st.session_state.show_signup = False
+        st.rerun()
+    st.stop()
+
+# Load existing results from database or session
+user = auth.current_user()
+if user:
+    # Authenticated user - load from Supabase
+    results = get_all_scraped_results()
+    if results:
+        st.write(f"📊 Total records loaded: {len(results)}")
+        # Convert to DataFrame for display
+        df_data = []
+        for result in results:
+            df_data.append({
+                "reddit": f"{result['reddit']['title'][:50]}...",
+                "analysis": result['analysis'].get('problem_description', '')[:100] + "...",
+                "solution": result['solution'].get('solution_description', '')[:100] + "..."
+            })
+        df = pd.DataFrame(df_data)
+        st.dataframe(df, use_container_width=True)
+        
+        # Download button for authenticated users
+        if st.button("⬇️ Download Results as JSON"):
+            json_data = json.dumps(results, indent=2, ensure_ascii=False)
+            st.download_button(
+                label="📥 Download JSON",
+                data=json_data,
+                file_name="scraped_results.json",
+                mime="application/json"
+            )
+    else:
+        st.info("No previous results found. Start scraping to see your data!")
+else:
+    # Anonymous user - load from session state
+    results = get_session_results()
+    if results:
+        st.write(f"📊 Session records: {len(results)} (will be lost on page refresh)")
+        df_data = []
+        for result in results:
+            df_data.append({
+                "reddit": f"{result['reddit']['title'][:50]}...",
+                "analysis": result['analysis'].get('problem_description', '')[:100] + "...",
+                "solution": result['solution'].get('solution_description', '')[:100] + "..."
+            })
+        df = pd.DataFrame(df_data)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No data yet – run your first scrape!")
 
     # --- New: Display Cursor playbook prompts for selected record ---
     st.markdown("---")
@@ -227,14 +254,20 @@ if scrape_btn:
                 filtered_df = report_df
             st.dataframe(filtered_df[["title", "url", "status", "details"]], use_container_width=True)
         if new_records:
-            # append to JSONL
-            with OUT_FILE.open("a", encoding="utf-8") as f:
-                for row in new_records:
-                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            # Save to database or session state
+            user = auth.current_user()
+            for record in new_records:
+                if user:
+                    # Authenticated user - save to Supabase
+                    save_scraped_result(record)
+                else:
+                    # Anonymous user - save to session state
+                    save_to_session_state(record)
+            
             st.success(f"Added {len(new_records)} new record(s)!")
             st.session_state[usage_key] += 1
         else:
-            st.warning("Nothing new this time – you’re up to date!")
+            st.warning("Nothing new this time – you're up to date!")
     # refresh table after scrape (works on all Streamlit versions)
     if hasattr(st, "rerun"):
         st.rerun()                       # Streamlit ≥ 1.25
