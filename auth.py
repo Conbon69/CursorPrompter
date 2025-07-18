@@ -24,14 +24,14 @@ def current_user():
         return None
 
 def handle_magic_link():
-    qs = st.experimental_get_query_params()
-    token = qs.get("access_token", [None])[0]
+    qs = st.query_params
+    token = qs.get("access_token", None)
     if not token:
         return
     user = sb.auth.get_user(token)
     if user and user.user:
         st.session_state["jwt"] = _jwt(user.user.id, user.user.email)
-        st.experimental_rerun()
+        st.rerun()
 
 def require_signup():
     from streamlit_modal import Modal

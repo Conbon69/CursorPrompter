@@ -115,12 +115,27 @@ if OUT_FILE.exists():
             prompts = playbook["prompts"]
         else:
             prompts = playbook if isinstance(playbook, list) else []
+        
+        # Convert prompts to strings if they're dictionaries
         if prompts:
+            prompt_strings = []
+            for prompt in prompts:
+                if isinstance(prompt, dict):
+                    # If it's a dict, try to extract the text content
+                    if "content" in prompt:
+                        prompt_strings.append(str(prompt["content"]))
+                    elif "text" in prompt:
+                        prompt_strings.append(str(prompt["text"]))
+                    else:
+                        prompt_strings.append(str(prompt))
+                else:
+                    prompt_strings.append(str(prompt))
+            
             st.markdown("**Numbered List:**")
-            for i, prompt in enumerate(prompts, 1):
+            for i, prompt in enumerate(prompt_strings, 1):
                 st.markdown(f"{i}. {prompt}")
             st.markdown("**Code Block (copy all):**")
-            st.code("\n\n".join(prompts), language="text")
+            st.code("\n\n".join(prompt_strings), language="text")
         else:
             st.info("No playbook prompts found for this record.")
     else:
@@ -268,10 +283,24 @@ if analyze_url_btn and url_to_analyze:
                 st.json(sol)
                 if playbook and playbook.get("prompts"):
                     st.markdown("**Cursor Playbook Prompts:**")
-                    for i, prompt in enumerate(playbook["prompts"], 1):
+                    prompts = playbook["prompts"]
+                    # Convert prompts to strings if they're dictionaries
+                    prompt_strings = []
+                    for prompt in prompts:
+                        if isinstance(prompt, dict):
+                            if "content" in prompt:
+                                prompt_strings.append(str(prompt["content"]))
+                            elif "text" in prompt:
+                                prompt_strings.append(str(prompt["text"]))
+                            else:
+                                prompt_strings.append(str(prompt))
+                        else:
+                            prompt_strings.append(str(prompt))
+                    
+                    for i, prompt in enumerate(prompt_strings, 1):
                         st.markdown(f"{i}. {prompt}")
                     st.markdown("**Code Block (copy all):**")
-                    st.code("\n\n".join(playbook["prompts"]), language="text")
+                    st.code("\n\n".join(prompt_strings), language="text")
                 else:
                     st.info("No playbook prompts found for this post.")
                 # Save to results.jsonl and scraper.db
