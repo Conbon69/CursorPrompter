@@ -36,29 +36,37 @@ from openai import OpenAI, OpenAIError
 # -------------------- 1. Credentials & clients ------------------------------
 load_dotenv()  # pulls REDDIT_* and OPENAI_* from .env if present
 
-# Try to get credentials from Streamlit secrets first, then environment variables
-try:
-    import streamlit as st
-    reddit = praw.Reddit(
-        client_id=st.secrets.get("REDDIT_CLIENT_ID") or os.getenv("REDDIT_CLIENT_ID"),
-        client_secret=st.secrets.get("REDDIT_CLIENT_SECRET") or os.getenv("REDDIT_CLIENT_SECRET"),
-        user_agent=st.secrets.get("REDDIT_USER_AGENT") or os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
-    )
-    client = OpenAI(
-        api_key=st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        organization=st.secrets.get("OPENAI_ORG") or os.getenv("OPENAI_ORG") or None,
-    )
-except:
-    # Fallback to environment variables only
-    reddit = praw.Reddit(
-        client_id=os.getenv("REDDIT_CLIENT_ID"),
-        client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-        user_agent=os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
-    )
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        organization=os.getenv("OPENAI_ORG") or None,
-    )
+def get_reddit_client():
+    """Get Reddit client with credentials from Streamlit secrets or environment variables"""
+    try:
+        import streamlit as st
+        return praw.Reddit(
+            client_id=st.secrets.get("REDDIT_CLIENT_ID") or os.getenv("REDDIT_CLIENT_ID"),
+            client_secret=st.secrets.get("REDDIT_CLIENT_SECRET") or os.getenv("REDDIT_CLIENT_SECRET"),
+            user_agent=st.secrets.get("REDDIT_USER_AGENT") or os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
+        )
+    except:
+        # Fallback to environment variables only
+        return praw.Reddit(
+            client_id=os.getenv("REDDIT_CLIENT_ID"),
+            client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+            user_agent=os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
+        )
+
+def get_openai_client():
+    """Get OpenAI client with credentials from Streamlit secrets or environment variables"""
+    try:
+        import streamlit as st
+        return OpenAI(
+            api_key=st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY"),
+            organization=st.secrets.get("OPENAI_ORG") or os.getenv("OPENAI_ORG") or None,
+        )
+    except:
+        # Fallback to environment variables only
+        return OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            organization=os.getenv("OPENAI_ORG") or None,
+        )
 
 MODEL = "o4-mini"
 TEMPERATURE = 0.45  # a touch more variety
@@ -149,6 +157,7 @@ strings.
 def oai_json(prompt: str, *, max_tokens: int = 25000) -> dict:
     """Call Chat Completions and force‑parse JSON."""
     try:
+        client = get_openai_client()
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -181,7 +190,8 @@ def scrape_subreddit(name: str, post_limit: int, max_comments: int, already_seen
     batch_size = max(50, post_limit * 3)
     items = []
     seen = set(already_seen_ids or [])
-    for submission in reddit.subreddit(name).new(limit=batch_size):
+    reddit_client = get_reddit_client()
+    for submission in reddit_client.subreddit(name).new(limit=batch_size):
         if submission.id in seen:
             continue
         submission.comments.replace_more(limit=0)

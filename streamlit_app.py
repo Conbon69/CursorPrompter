@@ -202,8 +202,8 @@ if analyze_url_btn and url_to_analyze:
         # Fetch post using PRAW
         reddit = None
         try:
-            from main import reddit as praw_reddit
-            reddit = praw_reddit
+            from main import get_reddit_client
+            reddit = get_reddit_client()
         except Exception:
             import praw
             import os
