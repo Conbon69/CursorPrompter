@@ -162,53 +162,50 @@ else:
     else:
         st.info("No data yet – run your first scrape!")
 
-    # --- New: Display Cursor playbook prompts for selected record ---
+# --- Display Cursor playbook prompts for selected record ---
+if results and len(results) > 0:
     st.markdown("---")
     st.subheader("📝 View Cursor Playbook Prompts")
-    if len(df) > 0:
-        # Let user select a record by index or title
-        options = [
-            f"{i}: {row['reddit'].get('title', row['reddit'].get('url', 'No title'))[:60]}"
-            for i, row in df.iterrows()
-        ]
-        selected = st.selectbox("Select a record to view its playbook prompts:", options, index=0)
-        idx = int(selected.split(":")[0])
-        playbook = df.iloc[idx].get("cursor_playbook", [])
-        reddit_info = df.iloc[idx]["reddit"]
-        analysis_info = df.iloc[idx]["analysis"]
-        st.markdown(f"**Post Title:** [{reddit_info.get('title', 'No title')}]({reddit_info.get('url', '#')})")
-        st.markdown(f"**Summary:** {analysis_info.get('problem_description', '')}")
-        if isinstance(playbook, dict) and "prompts" in playbook:
-            prompts = playbook["prompts"]
-        else:
-            prompts = playbook if isinstance(playbook, list) else []
-        
-        # Convert prompts to strings if they're dictionaries
-        if prompts:
-            prompt_strings = []
-            for prompt in prompts:
-                if isinstance(prompt, dict):
-                    # If it's a dict, try to extract the text content
-                    if "content" in prompt:
-                        prompt_strings.append(str(prompt["content"]))
-                    elif "text" in prompt:
-                        prompt_strings.append(str(prompt["text"]))
-                    else:
-                        prompt_strings.append(str(prompt))
+    # Let user select a record by index or title
+    options = [
+        f"{i}: {result['reddit']['title'][:60]}"
+        for i, result in enumerate(results)
+    ]
+    selected = st.selectbox("Select a record to view its playbook prompts:", options, index=0)
+    idx = int(selected.split(":")[0])
+    result = results[idx]
+    playbook = result.get("cursor_playbook", [])
+    reddit_info = result["reddit"]
+    analysis_info = result["analysis"]
+    st.markdown(f"**Post Title:** [{reddit_info.get('title', 'No title')}]({reddit_info.get('url', '#')})")
+    st.markdown(f"**Summary:** {analysis_info.get('problem_description', '')}")
+    if isinstance(playbook, dict) and "prompts" in playbook:
+        prompts = playbook["prompts"]
+    else:
+        prompts = playbook if isinstance(playbook, list) else []
+    
+    # Convert prompts to strings if they're dictionaries
+    if prompts:
+        prompt_strings = []
+        for prompt in prompts:
+            if isinstance(prompt, dict):
+                # If it's a dict, try to extract the text content
+                if "content" in prompt:
+                    prompt_strings.append(str(prompt["content"]))
+                elif "text" in prompt:
+                    prompt_strings.append(str(prompt["text"]))
                 else:
                     prompt_strings.append(str(prompt))
-            
-            st.markdown("**Numbered List:**")
-            for i, prompt in enumerate(prompt_strings, 1):
-                st.markdown(f"{i}. {prompt}")
-            st.markdown("**Code Block (copy all):**")
-            st.code("\n\n".join(prompt_strings), language="text")
-        else:
-            st.info("No playbook prompts found for this record.")
+            else:
+                prompt_strings.append(str(prompt))
+        
+        st.markdown("**Numbered List:**")
+        for i, prompt in enumerate(prompt_strings, 1):
+            st.markdown(f"{i}. {prompt}")
+        st.markdown("**Code Block (copy all):**")
+        st.code("\n\n".join(prompt_strings), language="text")
     else:
-        st.info("No records to display prompts for.")
-else:
-    st.info("No data yet – run your first scrape!")
+        st.info("No playbook prompts found for this record.")
 
 # === 4. Run scrape on click ==================================================
 if scrape_btn:
