@@ -36,15 +36,29 @@ from openai import OpenAI, OpenAIError
 # -------------------- 1. Credentials & clients ------------------------------
 load_dotenv()  # pulls REDDIT_* and OPENAI_* from .env if present
 
-reddit = praw.Reddit(
-    client_id=os.getenv("REDDIT_CLIENT_ID"),
-    client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-    user_agent=os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
-)
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    organization=os.getenv("OPENAI_ORG") or None,
-)
+# Try to get credentials from Streamlit secrets first, then environment variables
+try:
+    import streamlit as st
+    reddit = praw.Reddit(
+        client_id=st.secrets.get("REDDIT_CLIENT_ID") or os.getenv("REDDIT_CLIENT_ID"),
+        client_secret=st.secrets.get("REDDIT_CLIENT_SECRET") or os.getenv("REDDIT_CLIENT_SECRET"),
+        user_agent=st.secrets.get("REDDIT_USER_AGENT") or os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
+    )
+    client = OpenAI(
+        api_key=st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        organization=st.secrets.get("OPENAI_ORG") or os.getenv("OPENAI_ORG") or None,
+    )
+except:
+    # Fallback to environment variables only
+    reddit = praw.Reddit(
+        client_id=os.getenv("REDDIT_CLIENT_ID"),
+        client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+        user_agent=os.getenv("REDDIT_USER_AGENT", "reddit-scraper/0.3"),
+    )
+    client = OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        organization=os.getenv("OPENAI_ORG") or None,
+    )
 
 MODEL = "o4-mini"
 TEMPERATURE = 0.45  # a touch more variety
