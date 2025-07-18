@@ -30,11 +30,26 @@ def can_scrape():
     used = st.session_state[usage_key]
     if used >= limit:
         if not is_auth:
-            auth.require_signup()
+            st.error(f"Daily limit reached ({FREE_LIMIT}). Please sign in for more scrapes!")
+            if st.button("🔐 Sign In Now"):
+                auth.require_signup()
         else:
-            st.warning("Daily limit reached (15). Come back tomorrow!")
+            st.warning(f"Daily limit reached ({AUTH_LIMIT}). Come back tomorrow!")
         return False
     return True
+
+def show_quota_status():
+    """Display current quota usage in the sidebar"""
+    is_auth = auth.current_user() is not None
+    limit = AUTH_LIMIT if is_auth else FREE_LIMIT
+    used = st.session_state[usage_key]
+    remaining = max(0, limit - used)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**📊 Daily Quota**")
+    st.sidebar.progress(used / limit)
+    st.sidebar.markdown(f"**{used}/{limit}** scrapes used")
+    st.sidebar.markdown(f"**{remaining}** remaining today")
 
 # === 2. DB helpers ===========================================================
 DB_FILE = Path("scraper.db")
@@ -69,12 +84,30 @@ def mark_scraped(conn, post_id: str):
 st.set_page_config(page_title="Reddit → SaaS Idea Finder", layout="wide")
 
 st.sidebar.header("Scrape controls")
+
+# Authentication status and login button
+user = auth.current_user()
+if user:
+    st.sidebar.success(f"✅ Logged in as {user.get('email', 'User')}")
+    if st.sidebar.button("🚪 Sign Out"):
+        auth.sign_out()
+        st.rerun()
+else:
+    st.sidebar.info("👤 Anonymous user (2 scrapes/day)")
+    if st.sidebar.button("🔐 Sign In"):
+        auth.require_signup()
+
 subs = st.sidebar.text_input(
-    "Subreddits (comma‑separated)", value="consulting, smallbusiness"
+    "Subreddits (comma‑separated)", 
+    value="vibecoding, smallbusiness",
+    placeholder="ex: vibecoding, smallbusiness"
 )
-posts_per = st.sidebar.slider("Posts per subreddit", 1, 15, 5)
-cmts_per = st.sidebar.slider("Comments per post", 1, 50, 15)
+posts_per = st.sidebar.slider("Posts per subreddit", 1, 3, 2)
+cmts_per = st.sidebar.slider("Comments per post", 1, 30, 15)
 scrape_btn = st.sidebar.button("🚀 Scrape now")
+
+# Show quota status
+show_quota_status()
 
 st.sidebar.markdown("---")
 url_to_analyze = st.sidebar.text_input("Analyze a Reddit post by URL", value="")
