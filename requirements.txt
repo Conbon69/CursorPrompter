@@ -1,0 +1,4 @@
+streamlit>=1.33
+supabase>=2.3
+python-jose[cryptography]
+streamlit-modal 

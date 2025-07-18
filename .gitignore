@@ -1,0 +1,7 @@
+# Ignore environment and secrets
+.env
+.streamlit/secrets.toml
+
+# Ignore local database and results
+scraper.db
+results.jsonl 
