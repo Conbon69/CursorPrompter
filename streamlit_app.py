@@ -30,12 +30,12 @@ def can_scrape():
     limit = AUTH_LIMIT if is_auth else FREE_LIMIT
     used = st.session_state[usage_key]
     if used >= limit:
-            if not is_auth:
-        st.error(f"Daily limit reached ({FREE_LIMIT}). Please sign in for more scrapes!")
-        if st.button("🔐 Sign In Now", use_container_width=True):
-            st.session_state.show_signup = True
-            st.rerun()
-        return False
+        if not is_auth:
+            st.error(f"Daily limit reached ({FREE_LIMIT}). Please sign in for more scrapes!")
+            if st.button("🔐 Sign In Now", use_container_width=True):
+                st.session_state.show_signup = True
+                st.rerun()
+            return False
         else:
             st.warning(f"Daily limit reached ({AUTH_LIMIT}). Come back tomorrow!")
             return False
