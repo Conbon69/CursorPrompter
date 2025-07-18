@@ -37,8 +37,12 @@ def require_signup():
     from streamlit_modal import Modal
     modal = Modal("Create a free account", key="signup_modal")
     with modal.container():
-        email = st.text_input("Email", key="signup_email")
+        st.markdown("**Get 15 scrapes per day!**")
+        email = st.text_input("Email", key="signup_email", placeholder="your@email.com")
         if st.button("Send magic link", key="send_link") and email:
-            sb.auth.sign_in(email=email)
-            st.success("Check your inbox!")
-    st.stop() 
+            try:
+                sb.auth.sign_in_with_otp({"email": email})
+                st.success("✅ Magic link sent! Check your inbox.")
+            except Exception as e:
+                st.error(f"Error sending magic link: {e}")
+    return modal 

@@ -31,11 +31,14 @@ def can_scrape():
     if used >= limit:
         if not is_auth:
             st.error(f"Daily limit reached ({FREE_LIMIT}). Please sign in for more scrapes!")
-            if st.button("🔐 Sign In Now"):
-                auth.require_signup()
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("🔐 Sign In Now", use_container_width=True):
+                    modal = auth.require_signup()
+            return False
         else:
             st.warning(f"Daily limit reached ({AUTH_LIMIT}). Come back tomorrow!")
-        return False
+            return False
     return True
 
 def show_quota_status():
@@ -81,7 +84,11 @@ def mark_scraped(conn, post_id: str):
     conn.commit()
 
 # === 3. Streamlit UI =========================================================
-st.set_page_config(page_title="Reddit → SaaS Idea Finder", layout="wide")
+st.set_page_config(
+    page_title="Reddit → SaaS Idea Finder", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 st.sidebar.header("Scrape controls")
 
@@ -89,13 +96,13 @@ st.sidebar.header("Scrape controls")
 user = auth.current_user()
 if user:
     st.sidebar.success(f"✅ Logged in as {user.get('email', 'User')}")
-    if st.sidebar.button("🚪 Sign Out"):
+    if st.sidebar.button("🚪 Sign Out", use_container_width=True):
         auth.sign_out()
         st.rerun()
 else:
     st.sidebar.info("👤 Anonymous user (2 scrapes/day)")
-    if st.sidebar.button("🔐 Sign In"):
-        auth.require_signup()
+    if st.sidebar.button("🔐 Sign In", use_container_width=True):
+        modal = auth.require_signup()
 
 subs = st.sidebar.text_input(
     "Subreddits (comma‑separated)", 
@@ -104,14 +111,14 @@ subs = st.sidebar.text_input(
 )
 posts_per = st.sidebar.slider("Posts per subreddit", 1, 3, 2)
 cmts_per = st.sidebar.slider("Comments per post", 1, 30, 15)
-scrape_btn = st.sidebar.button("🚀 Scrape now")
+scrape_btn = st.sidebar.button("🚀 Scrape now", use_container_width=True)
 
 # Show quota status
 show_quota_status()
 
 st.sidebar.markdown("---")
-url_to_analyze = st.sidebar.text_input("Analyze a Reddit post by URL", value="")
-analyze_url_btn = st.sidebar.button("Analyze URL")
+url_to_analyze = st.sidebar.text_input("Analyze a Reddit post by URL", value="", placeholder="https://reddit.com/r/...")
+analyze_url_btn = st.sidebar.button("Analyze URL", use_container_width=True)
 
 st.title("💡 Reddit → SaaS Idea Finder")
 
