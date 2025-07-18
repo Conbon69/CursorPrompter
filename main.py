@@ -127,26 +127,35 @@ Create an ordered list of prompts the developer can paste into Cursor, one by
 one, to build the MVP below.  Each prompt can build off of the previous one.
 
 ### Required sequence
-0. **Context prompt** – Explain the problem, target market, and the chosen MVP
-   in ≤ 120 words. Finish with:  
-   > “Respond ‘Ready’ if you understand and will wait for detailed tasks.”
+0. **Context prompt** – Explain the problem, target market, and the chosen MVP
+   in ≤ 120 words. Finish with:  
+   > "Respond 'Ready' if you understand and will wait for detailed tasks."
 
 1. **Project bootstrap**  
    * Git repo init, README stub, MIT license  
    * Basic tooling: lint / format / .env.example
 
-2. **Data model & schema** – full schema with migrations (e.g. Prisma, Alembic,
+2. **Data model & schema** – full schema with migrations (e.g. Prisma, Alembic,
    or Mongoose).
 
-3. **Core backend logic & endpoints** – implement the 1‑3 MVP features with
+3. **Core backend logic & endpoints** – implement the 1‑3 MVP features with
    unit‑test stubs.
 
-4. **Minimal UI or CLI** – only what’s needed to demo the features locally.
+4. **Minimal UI or CLI** – only what's needed to demo the features locally.
 
-5. **Automated tests** – unit + one happy‑path integration test.
+5. **Automated tests** – unit + one happy‑path integration test.
 
-6. **Local run instructions** – how to start the dev server, seed sample data,
+6. **Local run instructions** – how to start the dev server, seed sample data,
    and test the flow.
+
+### Problem Context
+{problem}
+
+### Target Market
+{market}
+
+### Solution Description
+{solution}
 
 Return **JSON only** with one key `prompts` whose value is the array of prompt
 strings.
