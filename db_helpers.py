@@ -9,20 +9,27 @@ import streamlit as st
 from supabase import create_client
 
 # Get Supabase client from auth module
-try:
-    from auth import sb
-except ImportError:
-    sb = None
+_sb_client = None
 
 def get_supabase_client():
     """Get Supabase client, fallback to None if not configured"""
-    if sb:
-        return sb
+    global _sb_client
+    
+    # If we already have a client, return it
+    if _sb_client:
+        return _sb_client
+    
+    # Try to import and create client
     try:
         from auth import sb
-        return sb
-    except:
-        return None
+        if sb:
+            _sb_client = sb
+            return _sb_client
+    except Exception:
+        pass
+    
+    # If we get here, no client is available
+    return None
 
 def create_tables_if_not_exist():
     """Create necessary tables in Supabase if they don't exist"""

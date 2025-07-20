@@ -3,10 +3,21 @@ from datetime import datetime, timedelta
 from jose import jwt
 from supabase import create_client
 
-SB_URL  = st.secrets["SUPABASE_URL"]
-SB_KEY  = st.secrets["SUPABASE_ANON_KEY"]
-JWT_SECRET = st.secrets.get("JWT_SECRET", "change‑me")
-sb = create_client(SB_URL, SB_KEY)
+# Try to get from Streamlit secrets first, then fall back to environment variables
+try:
+    SB_URL = st.secrets["SUPABASE_URL"]
+    SB_KEY = st.secrets["SUPABASE_ANON_KEY"]
+    JWT_SECRET = st.secrets.get("JWT_SECRET", "change-me")
+except:
+    SB_URL = os.getenv("SUPABASE_URL")
+    SB_KEY = os.getenv("SUPABASE_ANON_KEY")
+    JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
+
+# Only create client if we have the required credentials
+if SB_URL and SB_KEY:
+    sb = create_client(SB_URL, SB_KEY)
+else:
+    sb = None
 
 def _jwt(uid, email):
     exp = datetime.utcnow() + timedelta(days=30)
@@ -24,18 +35,27 @@ def current_user():
         return None
 
 def handle_magic_link():
+    if not sb:
+        return
     qs = st.query_params
     token = qs.get("access_token", None)
     if not token:
         return
-    user = sb.auth.get_user(token)
-    if user and user.user:
-        st.session_state["jwt"] = _jwt(user.user.id, user.user.email)
-        st.session_state["jwt_user_id"] = user.user.id
-        st.rerun()
+    try:
+        user = sb.auth.get_user(token)
+        if user and user.user:
+            st.session_state["jwt"] = _jwt(user.user.id, user.user.email)
+            st.session_state["jwt_user_id"] = user.user.id
+            st.rerun()
+    except Exception as e:
+        st.error(f"Authentication error: {e}")
 
 def require_signup():
     """Show signup form in the main area instead of modal"""
+    if not sb:
+        st.error("Supabase not configured. Authentication is not available.")
+        return False
+        
     st.markdown("---")
     st.markdown("## 🔐 Create a Free Account")
     st.markdown("**Get 15 scrapes per day instead of 2!**")
