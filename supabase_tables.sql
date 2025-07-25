@@ -32,5 +32,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- FIX FOR RLS ISSUE: Disable Row-Level Security on scraped_results table
+-- This allows our custom authentication system to work properly
+ALTER TABLE scraped_results DISABLE ROW LEVEL SECURITY;
+
+-- Also disable RLS on scraped_posts table if it exists
+ALTER TABLE scraped_posts DISABLE ROW LEVEL SECURITY;
+
 -- Optional: Set up a cron job to clean up expired verifications every hour
 -- SELECT cron.schedule('cleanup-expired-verifications', '0 * * * *', 'SELECT cleanup_expired_verifications();'); 

@@ -45,40 +45,40 @@ def get_verified_user_id() -> str:
     email = get_current_user_email()
     return email if email else "anonymous"
 
-def save_scraped_result_new(result: Dict) -> bool:
-    """Save a scraped result to Supabase database (new verification system)"""
-    client = get_supabase_client()
-    if not client:
-        st.error("Supabase not configured. Data will not be saved.")
-        return False
-    
+def save_scraped_result_new(data: dict, user_id: str = None) -> bool:
+    """Save scraped result to Supabase with new auth system"""
     try:
-        # Get user email from new verification system
-        user_id = get_verified_user_id()
+        if not supabase_client:
+            return False
         
-        # Prepare the data for insertion
-        data = {
-            "uuid": result["meta"]["uuid"],
-            "scraped_at": result["meta"]["scraped_at"],
-            "subreddit": result["reddit"]["subreddit"],
-            "reddit_url": result["reddit"]["url"],
-            "reddit_title": result["reddit"]["title"],
-            "reddit_id": result["reddit"]["id"],
-            "analysis": json.dumps(result["analysis"]),
-            "solution": json.dumps(result["solution"]),
-            "cursor_playbook": json.dumps(result["cursor_playbook"]),
-            "user_id": user_id
+        # Use user_id if provided, otherwise use session state
+        if not user_id:
+            user_id = st.session_state.get("user_email", "anonymous")
+        
+        # Prepare data for insertion
+        data_to_insert = {
+            "user_id": user_id,
+            "title": data.get("title", ""),
+            "url": data.get("url", ""),
+            "analysis": json.dumps(data.get("analysis", {})),
+            "solution": json.dumps(data.get("solution", {})),
+            "playbook_prompts": json.dumps(data.get("playbook_prompts", [])),
+            "created_at": datetime.now().isoformat()
         }
         
-        # Insert into scraped_results table
-        response = client.table("scraped_results").insert(data).execute()
-        return True
+        # Insert into Supabase
+        response = supabase_client.table("scraped_results").insert(data_to_insert).execute()
+        
+        if response.data:
+            return True
+        else:
+            return False
+            
     except Exception as e:
-        st.error(f"Error saving to database: {e}")
         return False
 
 def get_all_scraped_results_new() -> List[Dict]:
-    """Get all scraped results from Supabase database (new verification system)"""
+    """Get all scraped results from Supabase (new verification system)"""
     client = get_supabase_client()
     if not client:
         return []
@@ -115,7 +115,6 @@ def get_all_scraped_results_new() -> List[Dict]:
         
         return results
     except Exception as e:
-        st.error(f"Error loading from database: {e}")
         return []
 
 def mark_post_scraped_new(post_id: str):

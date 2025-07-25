@@ -288,8 +288,11 @@ def handle_verification_flow():
             st.session_state["is_verified"] = True
             update_last_login(email)
             
-            # Clear the URL parameter
-            st.query_params.clear()
+            # Store email in URL parameters for persistence across page refreshes
+            st.query_params["email"] = email
+            
+            # Clear the verification token from URL
+            st.query_params.pop("verify_token", None)
             st.rerun()
         else:
             st.error("❌ Invalid or expired verification token")
@@ -308,5 +311,9 @@ def sign_out_verified_user():
     """Sign out the verified user"""
     st.session_state.pop("user_email", None)
     st.session_state.pop("is_verified", None)
+    
+    # Clear email from URL parameters
+    st.query_params.pop("email", None)
+    
     st.success("✅ Signed out successfully")
     st.rerun() 
