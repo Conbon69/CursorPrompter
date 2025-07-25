@@ -15,9 +15,10 @@ import streamlit as st
 
 # === 1. import the pipeline you wrote earlier ================================
 from main import run_pipeline  # same dir
-import auth
+from auth_manual import handle_magic_link, current_user, require_signup, sign_out, initialize_auth, is_authenticated
 from db_helpers import save_scraped_result, get_all_scraped_results, save_to_session_state, get_session_results, mark_post_scraped, is_post_already_scraped
-auth.handle_magic_link()
+
+# Handle magic link authentication (will be called after UI setup)
 
 # === 1.5. Quota management ===================================================
 FREE_LIMIT = 2
@@ -26,7 +27,7 @@ usage_key = f"usage_{date.today()}"
 st.session_state.setdefault(usage_key, 0)
 
 def can_scrape():
-    is_auth = auth.current_user() is not None
+    is_auth = is_authenticated()
     limit = AUTH_LIMIT if is_auth else FREE_LIMIT
     used = st.session_state[usage_key]
     if used >= limit:
@@ -43,7 +44,7 @@ def can_scrape():
 
 def show_quota_status():
     """Display current quota usage in the sidebar"""
-    is_auth = auth.current_user() is not None
+    is_auth = is_authenticated()
     limit = AUTH_LIMIT if is_auth else FREE_LIMIT
     used = st.session_state[usage_key]
     remaining = max(0, limit - used)
@@ -79,12 +80,19 @@ st.set_page_config(
 st.sidebar.header("Scrape controls")
 
 # Authentication status and login button
-user = auth.current_user()
+user = current_user()
 if user:
-    st.sidebar.success(f"✅ Logged in as {user.get('email', 'User')}")
+    # Handle both new Supabase user object and old custom JWT user
+    if hasattr(user, 'email'):
+        # New Supabase user object
+        user_email = user.email
+    else:
+        # Old custom JWT user object
+        user_email = user.get('email', 'User')
+    
+    st.sidebar.success(f"✅ Logged in as {user_email}")
     if st.sidebar.button("🚪 Sign Out", use_container_width=True):
-        auth.sign_out()
-        st.rerun()
+        sign_out()
 else:
     st.sidebar.info("👤 Anonymous user (2 scrapes/day)")
     if st.sidebar.button("🔐 Sign In", use_container_width=True):
@@ -102,6 +110,13 @@ scrape_btn = st.sidebar.button("🚀 Scrape now", use_container_width=True)
 # Show quota status
 show_quota_status()
 
+# Check JWT_SECRET configuration first
+from auth_manual import check_jwt_secret
+check_jwt_secret()
+
+# Initialize authentication (handles session persistence and magic link redirects)
+initialize_auth()
+
 st.sidebar.markdown("---")
 url_to_analyze = st.sidebar.text_input("Analyze a Reddit post by URL", value="", placeholder="https://reddit.com/r/...")
 analyze_url_btn = st.sidebar.button("Analyze URL", use_container_width=True)
@@ -110,14 +125,14 @@ st.title("💡 Reddit → SaaS Idea Finder")
 
 # Show signup form if requested
 if st.session_state.get("show_signup", False):
-    auth.require_signup()
+    require_signup()
     if st.button("← Back to Scraper"):
         st.session_state.show_signup = False
         st.rerun()
     st.stop()
 
 # Load existing results from database or session
-user = auth.current_user()
+user = current_user()
 if user:
     # Authenticated user - load from Supabase
     results = get_all_scraped_results()
@@ -252,9 +267,9 @@ if scrape_btn:
             st.dataframe(filtered_df[["title", "url", "status", "details"]], use_container_width=True)
         if new_records:
             # Save to database or session state
-            user = auth.current_user()
+            is_auth = is_authenticated()
             for record in new_records:
-                if user:
+                if is_auth:
                     # Authenticated user - save to Supabase
                     save_scraped_result(record)
                 else:

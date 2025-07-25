@@ -45,6 +45,10 @@ def save_scraped_result(result: Dict) -> bool:
         return False
     
     try:
+        # Get user ID using the new helper function
+        from auth_manual import get_user_id
+        user_id = get_user_id()
+        
         # Prepare the data for insertion
         data = {
             "uuid": result["meta"]["uuid"],
@@ -56,7 +60,7 @@ def save_scraped_result(result: Dict) -> bool:
             "analysis": json.dumps(result["analysis"]),
             "solution": json.dumps(result["solution"]),
             "cursor_playbook": json.dumps(result["cursor_playbook"]),
-            "user_id": st.session_state.get("jwt_user_id", "anonymous")
+            "user_id": user_id
         }
         
         # Insert into scraped_results table
@@ -73,8 +77,9 @@ def get_all_scraped_results() -> List[Dict]:
         return []
     
     try:
-        # Get results for current user (or all if admin)
-        user_id = st.session_state.get("jwt_user_id", "anonymous")
+        # Get user ID using the new helper function
+        from auth_manual import get_user_id
+        user_id = get_user_id()
         
         if user_id == "anonymous":
             # Anonymous users can only see their own results (stored in session)
@@ -125,10 +130,14 @@ def mark_post_scraped(post_id: str):
         return
     
     try:
+        # Get user ID using the new helper function
+        from auth_manual import get_user_id
+        user_id = get_user_id()
+        
         data = {
             "post_id": post_id,
             "scraped_at": datetime.utcnow().isoformat(),
-            "user_id": st.session_state.get("jwt_user_id", "anonymous")
+            "user_id": user_id
         }
         client.table("scraped_posts").insert(data).execute()
     except Exception as e:
@@ -142,7 +151,10 @@ def is_post_already_scraped(post_id: str) -> bool:
         return False
     
     try:
-        user_id = st.session_state.get("jwt_user_id", "anonymous")
+        # Get user ID using the new helper function
+        from auth_manual import get_user_id
+        user_id = get_user_id()
+        
         response = client.table("scraped_posts").select("post_id").eq("post_id", post_id).eq("user_id", user_id).execute()
         return len(response.data) > 0
     except Exception as e:
