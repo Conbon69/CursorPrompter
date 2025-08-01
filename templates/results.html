@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping Results - Reddit SaaS Idea Finder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .summary {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .summary h2 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .result-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .result-header {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .result-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin: 0 0 5px 0;
+        }
+        .result-meta {
+            font-size: 14px;
+            color: #666;
+        }
+        .result-meta a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .result-meta a:hover {
+            text-decoration: underline;
+        }
+        .result-content {
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .section-content {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .confidence-score {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .tech-tag {
+            background: #007bff;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .features-list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0;
+        }
+        .features-list li {
+            background: #e9ecef;
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .back-button {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .back-button:hover {
+            background: #5a6268;
+        }
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .copy-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .copy-button:hover {
+            background: #218838;
+        }
+        .playbook-list {
+            list-style: decimal;
+            padding-left: 20px;
+        }
+        .playbook-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .prompt-text {
+            margin-bottom: 10px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .copy-all-button {
+            background: #dc3545;
+            margin-top: 15px;
+        }
+        .copy-all-button:hover {
+            background: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <a href="/" class="back-button">← Back to Form</a>
+            {% if user_email %}
+            <div style="text-align: right;">
+                <div><strong>Usage:</strong> {{ current_usage }}/{{ limit }} today</div>
+                <div style="font-size: 14px; color: #666;">{{ user_email }}</div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <h1>🪄 Scraping Results</h1>
+        
+        <div class="summary">
+            <h2>Summary</h2>
+            <p><strong>Subreddits:</strong> {{ ", ".join(subreddits) }}</p>
+            <p><strong>Posts per subreddit:</strong> {{ posts_per_subreddit }}</p>
+            <p><strong>Comments per post:</strong> {{ comments_per_post }}</p>
+            <p><strong>Results found:</strong> {{ results|length }} viable ideas</p>
+        </div>
+        
+        {% if results %}
+            {% for result in results %}
+            <div class="result-card">
+                <div class="result-header">
+                    <div class="result-title">{{ result.title }}</div>
+                    <div class="result-meta">
+                        <strong>r/{{ result.subreddit }}</strong> • 
+                        <a href="{{ result.url }}" target="_blank">View on Reddit</a>
+                        {% if result.analysis.confidence_score %}
+                        • <span class="confidence-score">{{ "%.0f"|format(result.analysis.confidence_score * 100) }}% confidence</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="result-content">
+                    <div class="section">
+                        <h3>🎯 Problem Analysis</h3>
+                        <div class="section-content">
+                            {{ result.analysis }}
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>💡 Solution Summary</h3>
+                        <div class="section-content">
+                            {{ result.solution }}
+                        </div>
+                    </div>
+                    
+                    {% if result.playbook_prompts %}
+                    <div class="section">
+                        <h3>📋 Cursor Playbook Prompts</h3>
+                        <div class="section-content">
+                            <p><em>Step-by-step prompts for building this MVP:</em></p>
+                            <ol class="playbook-list">
+                                {% for prompt in result.playbook_prompts %}
+                                <li class="playbook-item">
+                                    <div class="prompt-text">{{ prompt }}</div>
+                                    <button class="copy-button" onclick="copyPrompt({{ loop.index0 }}, {{ loop.index }})">
+                                        📋 Copy Prompt {{ loop.index }}
+                                    </button>
+                                </li>
+                                {% endfor %}
+                            </ol>
+                            <button class="copy-button copy-all-button" onclick="copyAllPrompts({{ loop.index0 }})">
+                                📋 Copy All Prompts
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-results">
+                <h3>No viable ideas found</h3>
+                <p>Try different subreddits or increase the number of posts to analyze.</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <script>
+        const results = {{ results|tojson }};
+        
+        function copyPrompt(resultIndex, promptIndex) {
+            if (results[resultIndex] && results[resultIndex].playbook_prompts) {
+                const prompt = results[resultIndex].playbook_prompts[promptIndex - 1];
+                copyToClipboard(prompt, `Prompt ${promptIndex} copied to clipboard!`);
+            }
+        }
+        
+        function copyAllPrompts(resultIndex) {
+            if (results[resultIndex] && results[resultIndex].playbook_prompts) {
+                const allPrompts = results[resultIndex].playbook_prompts.map((prompt, index) => 
+                    `=== PROMPT ${index + 1} ===\n${prompt}`
+                ).join('\n\n');
+                copyToClipboard(allPrompts, 'All prompts copied to clipboard!');
+            }
+        }
+        
+        function copyToClipboard(text, successMessage) {
+            navigator.clipboard.writeText(text).then(function() {
+                showNotification(successMessage, 'success');
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+                // Fallback: show in alert
+                alert(successMessage + '\n\n' + text);
+            });
+        }
+        
+        function showNotification(message, type) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#28a745' : '#dc3545'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 6px;
+                z-index: 1000;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html> 

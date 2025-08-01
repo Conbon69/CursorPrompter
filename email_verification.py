@@ -262,14 +262,71 @@ def send_verification_email(email: str, token: str, app_url: str) -> bool:
     # except Exception as e:
     #     st.error(f"Mailersend error: {e}")
     
-    # === PLACEHOLDER (Current) ===
-    # Display the verification URL in the app
-    st.success(f"✅ Verification email sent to {email}")
-    st.info(f"🔗 Verification URL: {verification_url}")
-    st.warning("⚠️ This is a placeholder. Replace with actual email service.")
-    st.info("💡 To enable real emails, uncomment one of the email service options above and add your API key.")
-    
-    return True
+    # === RESEND EMAIL SERVICE ===
+    try:
+        import resend
+        import os
+        
+        # Get API key from environment variable
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        print(f"🔍 Email Debug: RESEND_API_KEY = {resend_api_key[:10] if resend_api_key else 'None'}...")
+        if not resend_api_key:
+            print("❌ RESEND_API_KEY environment variable not set")
+            print(f"🔍 Available env vars: {list(os.environ.keys())}")
+            return False
+        
+        resend.api_key = resend_api_key
+        
+        # For development, use Resend's sandbox domain
+        # For production, replace with your verified domain
+        from_email = "Acme <onboarding@resend.dev>"  # Resend's sandbox domain
+        
+        response = resend.Emails.send({
+            "from": from_email,
+            "to": [email],
+            "subject": "Verify your email - Reddit SaaS Idea Finder",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #333;">🚀 Welcome to Reddit SaaS Idea Finder!</h2>
+                <p>Thanks for signing up! Click the button below to verify your email address and unlock 15 scrapes per day:</p>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{verification_url}" style="background-color: #007bff; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                        ✅ Verify Email Address
+                    </a>
+                </div>
+                
+                <p style="color: #666; font-size: 14px;">
+                    Or copy and paste this link into your browser:<br>
+                    <a href="{verification_url}" style="color: #007bff;">{verification_url}</a>
+                </p>
+                
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                    <p style="margin: 0; color: #856404;">
+                        ⚠️ <strong>Important:</strong> This verification link will expire in 10 minutes.
+                    </p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px;">
+                    If you didn't request this verification, you can safely ignore this email.
+                </p>
+            </div>
+            """
+        })
+        
+        if response.id:
+            print(f"✅ Email sent successfully to {email}")
+            return True
+        else:
+            print(f"❌ Failed to send email to {email}")
+            return False
+            
+    except ImportError:
+        print("❌ Resend not installed. Run: pip install resend")
+        return False
+    except Exception as e:
+        print(f"❌ Resend error: {e}")
+        return False
 
 def handle_verification_flow():
     """Handle the complete verification flow"""

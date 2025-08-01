@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification - Reddit SaaS Idea Finder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        input[type="email"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .back-link a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+        .verification-url {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            word-break: break-all;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Email Verification</h1>
+        
+        <div class="info-box">
+            <h3>Why verify your email?</h3>
+            <ul>
+                <li><strong>Anonymous users:</strong> 2 scrapes per day</li>
+                <li><strong>Verified users:</strong> 15 scrapes per day</li>
+                <li>Track your scraping history</li>
+                <li>Save your favorite results</li>
+            </ul>
+            <p style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 4px; color: #1976d2;">
+                <strong>Note:</strong> Email verification is now configured! You'll receive a verification email, with a manual link as backup.
+            </p>
+        </div>
+        
+        {% if error %}
+        <div class="error">
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        {% if success %}
+        <div class="success">
+            <h3>✅ Verification Record Created!</h3>
+            <p>{{ success }}</p>
+            {% if email %}
+            <p><strong>Email:</strong> {{ email }}</p>
+            {% endif %}
+        </div>
+        
+        {% if show_manual_link and verification_url %}
+        <div class="info-box">
+            <h3>🔗 Manual Verification Link</h3>
+            {% if email_error %}
+            <div class="error" style="margin-bottom: 15px;">
+                {{ email_error }}
+            </div>
+            {% elif email_info %}
+            <div class="success" style="margin-bottom: 15px;">
+                {{ email_info }}
+            </div>
+            {% else %}
+            <p><strong>Since email sending is not configured, please use this link to verify your email:</strong></p>
+            {% endif %}
+            <div class="verification-url">
+                <a href="{{ verification_url }}" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">
+                    🚀 Click to Verify Email
+                </a>
+            </div>
+            <p style="margin-top: 10px; font-size: 14px; color: #666;">
+                Or copy this URL: <code style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px;">{{ verification_url }}</code>
+            </p>
+            <p style="margin-top: 10px; font-size: 14px; color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">
+                ⚠️ This link will expire in 10 minutes!
+            </p>
+        </div>
+        {% endif %}
+        {% else %}
+        <form method="POST" action="/verify">
+            <div class="form-group">
+                <label for="email">Email Address:</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    name="email" 
+                    placeholder="your@email.com"
+                    value="{{ email or '' }}"
+                    required
+                >
+            </div>
+            
+            <button type="submit">📧 Send Verification Email</button>
+        </form>
+        {% endif %}
+        
+        <div class="back-link">
+            <a href="/">← Back to Scraper</a>
+        </div>
+    </div>
+</body>
+</html> 

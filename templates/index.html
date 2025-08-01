@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit SaaS Idea Finder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .quota-status {
+            text-align: right;
+        }
+        .quota-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .quota-ok {
+            background: #d4edda;
+            color: #155724;
+        }
+        .quota-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .quota-exceeded {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .verify-button {
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
+        }
+        .verify-button:hover {
+            background: #218838;
+        }
+        .logout-button {
+            background: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
+        }
+        .logout-button:hover {
+            background: #5a6268;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        input[type="text"], input[type="number"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .help-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .quota-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .quota-info h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🪄 Reddit SaaS Idea Finder</h1>
+        
+        <!-- Header with user info and quota -->
+        <div class="header-section">
+            <div class="user-info">
+                {% if user_email %}
+                    <span><strong>Email:</strong> {{ user_email }}</span>
+                    {% if is_verified %}
+                        <span class="quota-badge quota-ok">✓ Verified</span>
+                    {% else %}
+                        <span class="quota-badge quota-warning">⚠ Unverified</span>
+                    {% endif %}
+                {% else %}
+                    <span><strong>Anonymous User</strong></span>
+                {% endif %}
+            </div>
+            <div class="quota-status">
+                <div><strong>Usage:</strong> {{ current_usage }}/{{ limit }} today</div>
+                {% if user_email %}
+                    <a href="/logout" class="logout-button">Logout</a>
+                {% else %}
+                    <a href="/verify" class="verify-button">Verify Email</a>
+                    <a href="/signin" class="verify-button" style="margin-left: 10px;">Sign In</a>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Quota information -->
+        <div class="quota-info">
+            <h3>📊 Daily Limits</h3>
+            {% if user_email and is_verified %}
+                <p>✅ <strong>Verified user:</strong> {{ limit }} scrapes per day</p>
+            {% elif user_email %}
+                <p>⚠️ <strong>Unverified user:</strong> {{ limit }} scrapes per day</p>
+                <p>🔗 <a href="/verify" style="color: #007bff;">Verify your email</a> to get 15 scrapes per day!</p>
+            {% else %}
+                <p>👤 <strong>Anonymous user:</strong> {{ limit }} scrapes per day</p>
+                <p>🔗 <a href="/verify" style="color: #007bff;">Verify your email</a> to get 15 scrapes per day!</p>
+            {% endif %}
+        </div>
+        
+        {% if error %}
+        <div class="error">
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        {% if success %}
+        <div class="success">
+            {{ success }}
+        </div>
+        {% endif %}
+        
+        <form method="POST" action="/scrape">
+            <div class="form-group">
+                <label for="subreddits">Subreddits to scrape:</label>
+                <textarea 
+                    id="subreddits" 
+                    name="subreddits" 
+                    placeholder="e.g., consulting, startups, ChatGPT&#10;Enter subreddit names separated by commas"
+                    required
+                >{{ request.query_params.get('subreddits', '') }}</textarea>
+                <div class="help-text">Enter subreddit names separated by commas (one per line or comma-separated)</div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="posts_per_subreddit">Posts per subreddit:</label>
+                    <input 
+                        type="number" 
+                        id="posts_per_subreddit" 
+                        name="posts_per_subreddit" 
+                        value="2" 
+                        min="1" 
+                        max="20"
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="comments_per_post">Comments per post:</label>
+                    <input 
+                        type="number" 
+                        id="comments_per_post" 
+                        name="comments_per_post" 
+                        value="15" 
+                        min="1" 
+                        max="50"
+                    >
+                </div>
+            </div>
+            
+            <button type="submit" {% if not can_scrape %}disabled{% endif %}>
+                {% if can_scrape %}
+                    🚀 Find SaaS Ideas
+                {% else %}
+                    ❌ Quota Exceeded
+                {% endif %}
+            </button>
+        </form>
+        
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 6px;">
+            <h3>How it works:</h3>
+            <ol>
+                <li>Enter subreddit names (comma-separated)</li>
+                <li>Set how many posts and comments to analyze</li>
+                <li>Click "Find SaaS Ideas" to start scraping</li>
+                <li>Get AI-generated business ideas with MVP plans</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html> 

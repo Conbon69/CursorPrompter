@@ -1,0 +1,5 @@
+[33m0f9f771[m[33m ([m[1;36mHEAD -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m  Enhanced streamlit_app.py with new authentication system and improved UX
+[33meb4e8a1[m Clean up code and implement proper clipboard copy functionality
+[33m25ad68b[m  Add custom email verification system
+[33m545394f[m  Update .gitignore to exclude Python cache files and other artifacts
+[33m89a1f7d[m  Improve Supabase authentication with proper session management
