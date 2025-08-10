@@ -221,11 +221,16 @@ else:
                             # Fallback
                             app_url = "http://localhost:8501"
                         
-                        # Send verification email (placeholder for now)
-                        send_verification_email(email, token, app_url)
+                        # Send verification email (with fallback)
+                        email_sent = send_verification_email(email, token, app_url)
                         
-                        st.success("✅ Verification email sent! Check your inbox and click the link to verify.")
-                        st.info("After clicking the verification link, you'll be redirected back here and automatically verified.")
+                        if email_sent:
+                            st.success("✅ Verification email sent! Check your inbox and click the link to verify.")
+                            st.info("After clicking the verification link, you'll be redirected back here and automatically verified.")
+                        else:
+                            # Email sending failed, but verification link was shown in the email function
+                            st.info("📧 Email sending failed, but you can use the verification link shown above to verify your email.")
+                            st.info("After clicking the verification link, you'll be redirected back here and automatically verified.")
                         
                     else:
                         st.error("❌ Failed to create verification record")

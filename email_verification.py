@@ -196,72 +196,6 @@ def send_verification_email(email: str, token: str, app_url: str) -> bool:
         # Fallback to provided app_url
         verification_url = f"{app_url}?verify_token={token}"
     
-    # TODO: Uncomment and configure your preferred email service
-    
-    # === OPTION 1: RESEND (Recommended) ===
-    # try:
-    #     import resend
-    #     resend.api_key = "re_..."  # Add your Resend API key
-    #     
-    #     response = resend.emails.send({
-    #         "from": "noreply@yourdomain.com",  # Replace with your verified domain
-    #         "to": email,
-    #         "subject": "Verify your email - Reddit SaaS Idea Finder",
-    #         "html": f"""
-    #         <h2>Welcome to Reddit SaaS Idea Finder!</h2>
-    #         <p>Click the button below to verify your email address:</p>
-    #         <a href="{verification_url}" style="background-color: #4CAF50; color: white; padding: 14px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-    #             Verify Email Address
-    #         </a>
-    #         <p>Or copy this link: <a href="{verification_url}">{verification_url}</a></p>
-    #         <p>This link will expire in 10 minutes.</p>
-    #         """
-    #     })
-    #     
-    #     if response.id:
-    #         return True
-    #     else:
-    #         return False
-    #         
-    # except ImportError:
-    #     st.warning("Resend not installed. Run: pip install resend")
-    # except Exception as e:
-    #     st.error(f"Resend error: {e}")
-    
-    # === OPTION 2: MAILERSEND ===
-    # try:
-    #     import requests
-    #     
-    #     MAILERSEND_API_KEY = "your_mailersend_api_key"  # Add your API key
-    #     
-    #     headers = {
-    #         "Authorization": f"Bearer {MAILERSEND_API_KEY}",
-    #         "Content-Type": "application/json"
-    #     }
-    #     
-    #     data = {
-    #         "from": {"email": "noreply@yourdomain.com"},
-    #         "to": [{"email": email}],
-    #         "subject": "Verify your email - Reddit SaaS Idea Finder",
-    #         "html": f"""
-    #         <h2>Welcome to Reddit SaaS Idea Finder!</h2>
-    #         <p>Click the button below to verify your email address:</p>
-    #         <a href="{verification_url}" style="background-color: #4CAF50; color: white; padding: 14px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-    #             Verify Email Address
-    #         </a>
-    #         <p>Or copy this link: <a href="{verification_url}">{verification_url}</a></p>
-    #         <p>This link will expire in 10 minutes.</p>
-    #         """
-    #     }
-    #     
-    #     response = requests.post("https://api.mailersend.com/v1/email", headers=headers, json=data)
-    #     return response.status_code == 202
-    #     
-    # except ImportError:
-    #     st.warning("Requests not installed. Run: pip install requests")
-    # except Exception as e:
-    #     st.error(f"Mailersend error: {e}")
-    
     # === RESEND EMAIL SERVICE ===
     try:
         import resend
@@ -269,10 +203,14 @@ def send_verification_email(email: str, token: str, app_url: str) -> bool:
         
         # Get API key from environment variable
         resend_api_key = os.getenv("RESEND_API_KEY")
-        print(f"🔍 Email Debug: RESEND_API_KEY = {resend_api_key[:10] if resend_api_key else 'None'}...")
         if not resend_api_key:
-            print("❌ RESEND_API_KEY environment variable not set")
-            print(f"🔍 Available env vars: {list(os.environ.keys())}")
+            st.warning("⚠️ RESEND_API_KEY not configured. Using fallback verification link.")
+            # Show the verification URL in the app as fallback
+            st.info("🔗 **Manual Verification Link**")
+            st.info(f"Since email sending is not configured, please use this link to verify your email:")
+            st.markdown(f"**[🚀 Click to Verify Email]({verification_url})**")
+            st.code(verification_url, language="text")
+            st.warning("⚠️ This link will expire in 10 minutes!")
             return False
         
         resend.api_key = resend_api_key
@@ -315,17 +253,35 @@ def send_verification_email(email: str, token: str, app_url: str) -> bool:
         })
         
         if response.id:
-            print(f"✅ Email sent successfully to {email}")
+            st.success(f"✅ Email sent successfully to {email}")
             return True
         else:
-            print(f"❌ Failed to send email to {email}")
+            st.error(f"❌ Failed to send email to {email}")
+            # Show fallback verification link
+            st.info("🔗 **Manual Verification Link**")
+            st.info(f"Since email sending failed, please use this link to verify your email:")
+            st.markdown(f"**[🚀 Click to Verify Email]({verification_url})**")
+            st.code(verification_url, language="text")
+            st.warning("⚠️ This link will expire in 10 minutes!")
             return False
             
     except ImportError:
-        print("❌ Resend not installed. Run: pip install resend")
+        st.warning("⚠️ Resend not installed. Using fallback verification link.")
+        # Show the verification URL in the app as fallback
+        st.info("🔗 **Manual Verification Link**")
+        st.info(f"Since Resend is not installed, please use this link to verify your email:")
+        st.markdown(f"**[🚀 Click to Verify Email]({verification_url})**")
+        st.code(verification_url, language="text")
+        st.warning("⚠️ This link will expire in 10 minutes!")
         return False
     except Exception as e:
-        print(f"❌ Resend error: {e}")
+        st.error(f"❌ Resend error: {e}")
+        # Show fallback verification link
+        st.info("🔗 **Manual Verification Link**")
+        st.info(f"Since email sending failed, please use this link to verify your email:")
+        st.markdown(f"**[🚀 Click to Verify Email]({verification_url})**")
+        st.code(verification_url, language="text")
+        st.warning("⚠️ This link will expire in 10 minutes!")
         return False
 
 def handle_verification_flow():

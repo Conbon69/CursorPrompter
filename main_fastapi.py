@@ -87,6 +87,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
 SESSION_COOKIE_NAME = "user_session"
 SESSION_EXPIRY_DAYS = 30
 
+# Simple local storage for ideas dashboard
+RESULTS_FILE = "results.jsonl"
+SELECTION_FILE = "selected_ideas.json"
+
 def create_session_token(email: str) -> str:
     """Create a secure session token"""
     import jwt
@@ -114,6 +118,98 @@ def get_user_email_from_request(request: Request) -> Optional[str]:
     if session_token:
         return verify_session_token(session_token)
     return None
+
+def _selection_key(email: Optional[str]) -> str:
+    return email or "anonymous"
+
+def get_selected_idea_uuid(email: Optional[str]) -> Optional[str]:
+    try:
+        if not os.path.exists(SELECTION_FILE):
+            return None
+        with open(SELECTION_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get(_selection_key(email))
+    except Exception:
+        return None
+
+def set_selected_idea_uuid(email: Optional[str], idea_uuid: str) -> None:
+    try:
+        data = {}
+        if os.path.exists(SELECTION_FILE):
+            with open(SELECTION_FILE, "r", encoding="utf-8") as f:
+                try:
+                    data = json.load(f) or {}
+                except Exception:
+                    data = {}
+        data[_selection_key(email)] = idea_uuid
+        with open(SELECTION_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def append_results_to_file(results: List[dict], owner_email: Optional[str]) -> None:
+    try:
+        with open(RESULTS_FILE, "a", encoding="utf-8") as f:
+            for r in results:
+                # add owner email for optional filtering later
+                if owner_email:
+                    r = {**r, "owner_email": owner_email}
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+def load_recent_ideas(limit: int = 20) -> List[dict]:
+    if not os.path.exists(RESULTS_FILE):
+        return []
+    rows: List[dict] = []
+    try:
+        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    meta = obj.get("meta", {})
+                    reddit = obj.get("reddit", {})
+                    analysis = obj.get("analysis", {})
+                    # pick a human-friendly description
+                    desc = analysis.get("problem_description") or analysis.get("opportunity_description") or ""
+                    rows.append({
+                        "uuid": meta.get("uuid"),
+                        "created_at": meta.get("scraped_at"),
+                        "title": reddit.get("title"),
+                        "subreddit": reddit.get("subreddit"),
+                        "url": reddit.get("url"),
+                        "description": desc,
+                    })
+                except Exception:
+                    continue
+        # sort by created_at desc if available
+        rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+        return rows[:limit]
+    except Exception:
+        return []
+
+def load_idea_by_uuid(idea_uuid: str) -> Optional[dict]:
+    if not idea_uuid or not os.path.exists(RESULTS_FILE):
+        return None
+    try:
+        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    meta = obj.get("meta", {})
+                    if meta.get("uuid") == idea_uuid:
+                        return obj
+                except Exception:
+                    continue
+        return None
+    except Exception:
+        return None
 
 def get_daily_usage(email: Optional[str]) -> int:
     """Get daily usage count for user"""
@@ -145,13 +241,23 @@ async def index(request: Request):
     user_email = get_user_email_from_request(request)
     can_scrape, current_usage, limit = can_user_scrape(user_email)
     
+    # Load recent ideas and current selection
+    ideas = load_recent_ideas(limit=50)
+    # Allow viewing a specific idea via query param
+    qp_idea = request.query_params.get("idea")
+    selected_uuid = qp_idea or get_selected_idea_uuid(user_email)
+    selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "user_email": user_email,
         "can_scrape": can_scrape,
         "current_usage": current_usage,
         "limit": limit,
-        "is_verified": is_email_verified(user_email) if user_email else False
+        "is_verified": is_email_verified(user_email) if user_email else False,
+        "ideas": ideas,
+        "selected_idea_uuid": selected_uuid,
+        "selected_idea": selected_idea
     })
 
 @app.post("/scrape", response_class=HTMLResponse)
@@ -198,6 +304,11 @@ async def scrape(
             post_lim=posts_per_subreddit,
             cmnt_lim=comments_per_post
         )
+        # Persist full results locally for the dashboard
+        try:
+            append_results_to_file(results, user_email)
+        except Exception:
+            pass
         
         # Increment usage
         increment_daily_usage(user_email)
@@ -237,6 +348,18 @@ async def scrape(
             "error": f"Error during scraping: {str(e)}"
         })
 
+@app.post("/select")
+async def select_idea(request: Request, idea_uuid: str = Form(...)):
+    """Select an idea to work on; stored per user in a small JSON file."""
+    try:
+        user_email = get_user_email_from_request(request)
+        if idea_uuid:
+            set_selected_idea_uuid(user_email, idea_uuid)
+        # Redirect to view the selected idea details immediately
+        return RedirectResponse(url=f"/?idea={idea_uuid}", status_code=302)
+    except Exception:
+        return RedirectResponse(url="/", status_code=302)
+
 @app.get("/verify", response_class=HTMLResponse)
 async def verify_email_page(request: Request):
     """Show email verification page"""
@@ -259,17 +382,19 @@ async def verify_email(
             email_sent = send_verification_email_fastapi(email, token, str(request.base_url))
             
             if email_sent:
-                # Check if we're in development mode
-                is_development = "onboarding@resend.dev" in "Acme <onboarding@resend.dev>"
+                # Determine if we're using the Resend sandbox sender
+                from_email = os.getenv("RESEND_FROM_EMAIL", "Acme <onboarding@resend.dev>")
+                is_development = "onboarding@resend.dev" in from_email
                 
                 if is_development:
+                    # Sandbox sender may have delivery restrictions; also show manual link as fallback
                     return templates.TemplateResponse("verify.html", {
                         "request": request,
-                        "success": f"✅ Verification record created successfully! (Development Mode)",
+                        "success": f"✅ Verification email attempted to {email}.",
                         "verification_url": verification_url,
                         "email": email,
                         "show_manual_link": True,
-                        "email_info": "🔧 Development mode: Email simulation successful. Use the verification link below."
+                        "email_info": "ℹ️ Using Resend sandbox sender. If the email doesn't arrive, use the link below or configure RESEND_FROM_EMAIL with a verified domain."
                     })
                 else:
                     return templates.TemplateResponse("verify.html", {
@@ -382,6 +507,78 @@ async def logout(request: Request):
     response = RedirectResponse(url="/", status_code=302)
     response.delete_cookie(key=SESSION_COOKIE_NAME)
     return response
+
+@app.get("/debug/email", response_class=JSONResponse)
+async def debug_email(request: Request):
+    """Diagnostics for email verification configuration and connectivity."""
+    def mask(value: str, keep: int = 6) -> str:
+        if not value:
+            return ""
+        return value[:keep] + ("…" if len(value) > keep else "")
+
+    # Environment flags
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    from_email = os.getenv("RESEND_FROM_EMAIL", "Acme <onboarding@resend.dev>")
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_ANON_KEY")
+
+    # Library availability
+    try:
+        import resend  # noqa: F401
+        resend_installed = True
+    except Exception:
+        resend_installed = False
+
+    # Supabase connectivity and table checks
+    supabase_client_created = False
+    pending_table_ok = False
+    verified_table_ok = False
+    supabase_error = None
+    try:
+        if supabase_url and supabase_key:
+            from supabase import create_client
+            sb = create_client(supabase_url, supabase_key)
+            supabase_client_created = sb is not None
+            if sb:
+                try:
+                    sb.table("pending_verifications").select("count", count="exact").limit(1).execute()
+                    pending_table_ok = True
+                except Exception as e:
+                    supabase_error = f"pending_verifications: {e}"
+                try:
+                    sb.table("verified_users").select("count", count="exact").limit(1).execute()
+                    verified_table_ok = True
+                except Exception as e:
+                    supabase_error = (supabase_error or "") + f"; verified_users: {e}"
+    except Exception as e:
+        supabase_error = str(e)
+
+    # Example verification URL
+    base_url = str(request.base_url)
+    example_token = "<token>"
+    verification_url_example = f"{base_url}verify/confirm?token={example_token}"
+
+    return {
+        "resend": {
+            "installed": resend_installed,
+            "has_api_key": bool(resend_api_key),
+            "api_key_prefix": mask(resend_api_key or ""),
+            "from_email": from_email,
+            "using_sandbox_sender": "onboarding@resend.dev" in from_email,
+        },
+        "supabase": {
+            "has_url": bool(supabase_url),
+            "has_anon_key": bool(supabase_key),
+            "client_created": supabase_client_created,
+            "pending_verifications_table": pending_table_ok,
+            "verified_users_table": verified_table_ok,
+            "error": supabase_error,
+        },
+        "app": {
+            "base_url": base_url,
+            "verification_url_example": verification_url_example,
+        },
+    }
 
 if __name__ == "__main__":
     print("🚀 Starting FastAPI server...")

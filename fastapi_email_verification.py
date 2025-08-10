@@ -152,62 +152,48 @@ def send_verification_email_fastapi(email: str, token: str, app_url: str) -> boo
         # Set API key
         resend.api_key = resend_api_key
         
-        # For development, use Resend's sandbox domain
-        from_email = "Acme <onboarding@resend.dev>"
+        # Choose sender. Prefer verified domain via env; fallback to sandbox (delivery restrictions apply)
+        from_email = os.getenv("RESEND_FROM_EMAIL", "Acme <onboarding@resend.dev>")
+        if "onboarding@resend.dev" in from_email:
+            print("ℹ️ Using Resend sandbox sender. Delivery may be restricted unless your recipient is allowed by Resend.")
         
         # Generate verification URL for FastAPI
         verification_url = f"{app_url}verify/confirm?token={token}"
-        
         print(f"📧 Sending email to {email} with verification URL: {verification_url}")
         
-        # Check if we're in development mode (using sandbox domain)
-        is_development = "onboarding@resend.dev" in from_email
-        
-        if is_development:
-            # In development, we can only send to specific test emails
-            # For now, we'll simulate the email sending and show the verification URL
-            print(f"🔧 Development mode: Email would be sent to {email}")
-            print(f"🔧 Verification URL: {verification_url}")
-            print("🔧 In production, this would send a real email")
-            
-            # For development, we'll return True to simulate success
-            # In production, you would verify your domain with Resend
-            return True
-        
-        # Production code (when you have a verified domain)
+        # Attempt to send email
         response = resend.Emails.send({
             "from": from_email,
             "to": [email],
             "subject": "Verify your email - Reddit SaaS Idea Finder",
             "html": f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">🚀 Welcome to Reddit SaaS Idea Finder!</h2>
+            <div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">
+                <h2 style=\"color: #333;\">🚀 Welcome to Reddit SaaS Idea Finder!</h2>
                 <p>Thanks for signing up! Click the button below to verify your email address and unlock 15 scrapes per day:</p>
                 
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="{verification_url}" style="background-color: #007bff; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                <div style=\"text-align: center; margin: 30px 0;\">
+                    <a href=\"{verification_url}\" style=\"background-color: #007bff; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;\">
                         ✅ Verify Email Address
                     </a>
                 </div>
                 
-                <p style="color: #666; font-size: 14px;">
+                <p style=\"color: #666; font-size: 14px;\">
                     Or copy and paste this link into your browser:<br>
-                    <a href="{verification_url}" style="color: #007bff;">{verification_url}</a>
+                    <a href=\"{verification_url}\" style=\"color: #007bff;\">{verification_url}</a>
                 </p>
                 
-                <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0;">
-                    <p style="margin: 0; color: #856404;">
+                <div style=\"background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0;\">
+                    <p style=\"margin: 0; color: #856404;\">
                         ⚠️ <strong>Important:</strong> This verification link will expire in 10 minutes.
                     </p>
                 </div>
                 
-                <p style="color: #666; font-size: 14px;">
+                <p style=\"color: #666; font-size: 14px;\">
                     If you didn't request this verification, you can safely ignore this email.
                 </p>
             </div>
             """
         })
-        
         print(f"📊 Resend response: {response}")
         
         if hasattr(response, 'id') and response.id:
