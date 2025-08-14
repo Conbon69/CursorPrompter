@@ -441,7 +441,10 @@ if scrape_btn:
                     save_to_session_state(record)
             
             st.success(f"Added {len(new_records)} new record(s)!")
-            st.session_state[usage_key] += 1
+            try:
+                st.session_state[usage_key] += len(report)
+            except Exception:
+                st.session_state[usage_key] += len(new_records)
         else:
             st.warning("Nothing new this time – you're up to date!")
     # refresh table after scrape (works on all Streamlit versions)

@@ -1,0 +1,32 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments and local env dirs
+venv/
+.venv/
+.env/
+
+# Environment files and secrets
+.env
+*.env
+
+# Build/test artifacts
+build/
+dist/
+*.egg-info/
+.coverage
+.pytest_cache/
+
+# VCS
+.git/
+.gitignore
+
+# Local data artifacts
+scraper.db
+results.jsonl
+selected_ideas.json
+
+# OS/editor
+.DS_Store

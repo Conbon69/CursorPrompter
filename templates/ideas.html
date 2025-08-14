@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ideas - Reddit SaaS Idea Finder</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
+        .container { background: white; padding: 24px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin: 0 0 16px 0; }
+
+        .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        @media (min-width: 900px) {
+            .grid { grid-template-columns: 32% 68%; }
+        }
+        /* Mobile behavior: hide detail until selection; show back button */
+        @media (max-width: 899px) {
+            .grid.selected .list { display: none; }
+            .grid.selected .detail { display: block; }
+            .grid:not(.selected) .detail { display: none; }
+            .mobile-back { display: inline-block; }
+        }
+        @media (min-width: 900px) {
+            .mobile-back { display: none; }
+        }
+
+        .list { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #fff; }
+        .list-item { padding: 12px 14px; border-bottom: 1px solid #e5e7eb; cursor: pointer; text-decoration: none; display: block; }
+        .list-item:last-child { border-bottom: none; }
+        .list-item:hover { background: #f9fafb; }
+        .list-item.active { background: #eef2ff; }
+        .list-title { font-weight: 600; color: #111827; }
+        .list-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+        .detail { border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; padding: 16px; }
+        .detail h1.title { margin: 0; font-size: 24px; color: #111827; }
+        .detail-sub { font-size: 13px; color: #6b7280; margin-top: 6px; }
+        .section { margin-top: 14px; }
+        .section h3 { margin: 0 0 8px 0; font-size: 15px; color: #111827; }
+        .section-body { font-size: 14px; color: #374151; line-height: 1.55; }
+        .pill { display: inline-block; padding: 2px 8px; background: #e5e7eb; border-radius: 999px; font-size: 12px; margin-right: 6px; }
+        ol.prompts { margin: 8px 0 0 18px; }
+        ol.prompts li { margin-bottom: 8px; }
+        .toolbar { display:flex; justify-content: space-between; align-items:center; margin-bottom: 12px; }
+        .back-link { color:#007bff; text-decoration:none; }
+        .back-link:hover { text-decoration: underline; }
+
+        /* Code blocks and copy buttons */
+        .prompt-block { position: relative; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px 12px 12px 12px; margin-bottom: 12px; }
+        .prompt-pre { margin: 0; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.5; }
+        .copy-btn { position: absolute; top: 8px; right: 8px; background: #111827; color: #fff; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .copy-btn:hover { background: #0b1220; }
+        .copy-all { background:#007bff; color:#fff; border:none; padding:10px 12px; border-radius:6px; cursor:pointer; font-size: 13px; }
+        .copy-all:hover { background:#005dc1; }
+    </style>
+    </head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <h1>💡 Ideas</h1>
+            <a class="back-link" href="/">← Back to Scraper</a>
+        </div>
+        <div class="grid {% if selected_idea %}selected{% endif %}">
+            <!-- Left: list -->
+            <div class="list">
+                {% if ideas and ideas|length > 0 %}
+                    {% for idea in ideas %}
+                    <a class="list-item {% if selected_idea_uuid and idea.uuid == selected_idea_uuid %}active{% endif %}" href="/ideas?idea={{ idea.uuid }}">
+                        <div class="list-title">{{ idea.title }}</div>
+                        <div class="list-sub">r/{{ idea.subreddit }}</div>
+                    </a>
+                    {% endfor %}
+                {% else %}
+                    <div class="list-item" style="cursor: default;">No ideas found.</div>
+                {% endif %}
+            </div>
+
+            <!-- Right: details -->
+            <div class="detail">
+                {% if selected_idea %}
+                    <div style="display:flex; justify-content: space-between; align-items: start; gap:12px;">
+                        <div style="flex:1 1 auto;">
+                            <h1 class="title">{{ selected_idea.reddit.title }}</h1>
+                            <div class="detail-sub">r/{{ selected_idea.reddit.subreddit }} • <a href="{{ selected_idea.reddit.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a></div>
+                        </div>
+                        <div>
+                            <a href="/ideas" class="mobile-back" style="background:#6b7280; color:#fff; padding:8px 12px; border-radius:6px; text-decoration:none; margin-right:8px;">← Back</a>
+                            {% if selected_idea and selected_idea.meta and selected_idea.meta.uuid %}
+                            <button id="saveBtn" class="copy-all" style="background:#111827;" onclick="toggleSave()">
+                                {% if selected_is_saved %}★ Saved{% else %}☆ Save{% endif %}
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>Problem</h3>
+                        <div class="section-body">{{ selected_idea.analysis.problem_description or selected_idea.analysis.opportunity_description }}</div>
+                    </div>
+
+                    <div class="section">
+                        <h3>AI Idea</h3>
+                        <div class="section-body">{{ selected_idea.solution.solution_description }}</div>
+                    </div>
+
+                    <div class="section">
+                        <h3>MVP Plan</h3>
+                        <div class="section-body">
+                            {% if selected_idea.solution.mvp_features %}
+                                <ul style="margin: 0 0 0 18px;">
+                                {% for f in selected_idea.solution.mvp_features %}
+                                    <li>{{ f }}</li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                <span>No features listed.</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if selected_idea.cursor_playbook and selected_idea.cursor_playbook|length > 0 %}
+                    <div class="section">
+                        <h3>Prompts</h3>
+                        <button class="copy-all" onclick="copyAllPrompts()">📋 Copy all prompts</button>
+                        <div style="height: 8px;"></div>
+                        {% for p in selected_idea.cursor_playbook %}
+                        <div class="prompt-block">
+                            <button class="copy-btn" onclick="copyPrompt({{ loop.index0 }})">Copy</button>
+                            <pre class="prompt-pre">{{ p }}</pre>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                {% else %}
+                    <div>No idea selected.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <script>
+        // Helpers adapted from results page
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#28a745' : '#dc3545'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 6px;
+                z-index: 1000;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 2500);
+        }
+        function copyToClipboard(text, successMessage) {
+            navigator.clipboard.writeText(text).then(function() {
+                showNotification(successMessage, 'success');
+            }).catch(function(err) {
+                // Fallback
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text; document.body.appendChild(ta);
+                    ta.select(); document.execCommand('copy'); ta.remove();
+                    showNotification(successMessage, 'success');
+                } catch(e) {
+                    console.error('Copy failed', err);
+                    alert(successMessage + '\n\n' + text);
+                }
+            });
+        }
+        const prompts = {% if selected_idea and selected_idea.cursor_playbook %}{{ selected_idea.cursor_playbook | tojson }}{% else %}[]{% endif %};
+        function copyPrompt(i) {
+            if (!prompts || !prompts[i]) return;
+            copyToClipboard(String(prompts[i]), 'Prompt copied');
+        }
+        function copyAllPrompts() {
+            if (!prompts || prompts.length === 0) return;
+            const allText = prompts.map((p, idx) => `=== PROMPT ${idx+1} ===\n${String(p)}`).join('\n\n');
+            copyToClipboard(allText, 'All prompts copied');
+        }
+
+        async function toggleSave() {
+            const btn = document.getElementById('saveBtn');
+            if (!btn) return;
+            const ideaId = {% if selected_idea and selected_idea.meta and selected_idea.meta.uuid %}'{{ selected_idea.meta.uuid }}'{% else %}null{% endif %};
+            if (!ideaId) return;
+
+            // Optimistic UI
+            const savedNow = btn.textContent.trim().startsWith('★');
+            if (savedNow) {
+                btn.textContent = '☆ Save';
+            } else {
+                btn.textContent = '★ Saved';
+            }
+
+            try {
+                const res = await fetch(`/api/ideas/${ideaId}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' } });
+                if (!res.ok) throw new Error('Request failed');
+                const data = await res.json();
+                showNotification(data.status === 'saved' ? 'Saved' : 'Removed from saved', 'success');
+            } catch (e) {
+                // revert on failure
+                if (savedNow) {
+                    btn.textContent = '★ Saved';
+                } else {
+                    btn.textContent = '☆ Save';
+                }
+                showNotification('Update failed', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
+
+

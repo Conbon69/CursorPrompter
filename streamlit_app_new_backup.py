@@ -548,7 +548,7 @@ if scrape_btn:
                     progress_bar.progress(100)
                     status_text.text("✅ Scraping completed successfully!")
                     st.success(f"Added {len(new_records)} new record(s)!")
-                    st.session_state[usage_key] += 1
+                    st.session_state[usage_key] += len(posts_to_process)
                 else:
                     progress_bar.progress(100)
                     status_text.text("✅ No new viable posts found!")

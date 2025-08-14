@@ -65,7 +65,7 @@ from db_helpers import (
     mark_post_scraped_new, 
     is_post_already_scraped_new
 )
-from fastapi_db_helpers import get_daily_usage_safe, increment_daily_usage_safe
+from fastapi_db_helpers import get_daily_usage_safe, increment_daily_usage_safe, increment_daily_usage_by_safe
 
 app = FastAPI(title="Reddit SaaS Idea Finder", version="1.0.0")
 
@@ -90,6 +90,7 @@ SESSION_EXPIRY_DAYS = 30
 # Simple local storage for ideas dashboard
 RESULTS_FILE = "results.jsonl"
 SELECTION_FILE = "selected_ideas.json"
+SAVED_FILE = "saved_ideas.json"
 
 def create_session_token(email: str) -> str:
     """Create a secure session token"""
@@ -146,6 +147,48 @@ def set_selected_idea_uuid(email: Optional[str], idea_uuid: str) -> None:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+def _saved_key(email: Optional[str]) -> str:
+    return email or "anonymous"
+
+def _load_saved_map() -> dict:
+    if not os.path.exists(SAVED_FILE):
+        return {}
+    try:
+        with open(SAVED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def _write_saved_map(data: dict) -> None:
+    try:
+        with open(SAVED_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def is_saved(email: Optional[str], idea_uuid: Optional[str]) -> bool:
+    if not idea_uuid:
+        return False
+    data = _load_saved_map()
+    saved_list = data.get(_saved_key(email)) or []
+    return idea_uuid in saved_list
+
+def set_saved(email: Optional[str], idea_uuid: str, saved: bool) -> bool:
+    try:
+        data = _load_saved_map()
+        key = _saved_key(email)
+        saved_list = data.get(key) or []
+        if saved and idea_uuid not in saved_list:
+            saved_list.append(idea_uuid)
+        if not saved and idea_uuid in saved_list:
+            saved_list = [u for u in saved_list if u != idea_uuid]
+        data[key] = saved_list
+        _write_saved_map(data)
+        return True
+    except Exception:
+        return False
 
 def append_results_to_file(results: List[dict], owner_email: Optional[str]) -> None:
     try:
@@ -210,6 +253,43 @@ def load_idea_by_uuid(idea_uuid: str) -> Optional[dict]:
         return None
     except Exception:
         return None
+
+def load_user_ideas(email: str, limit: int = 50) -> List[dict]:
+    """Load recent ideas for a specific owner (scoped to authenticated user)."""
+    items: List[dict] = []
+    if not email or not os.path.exists(RESULTS_FILE):
+        return items
+    try:
+        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                if obj.get("owner_email") != email:
+                    continue
+                meta = obj.get("meta", {})
+                reddit = obj.get("reddit", {})
+                analysis = obj.get("analysis", {})
+                solution = obj.get("solution", {})
+                items.append({
+                    "id": meta.get("uuid"),
+                    "title": reddit.get("title"),
+                    "subreddit": reddit.get("subreddit"),
+                    "problem_text": analysis.get("problem_description") or analysis.get("opportunity_description") or "",
+                    "idea_summary": solution.get("solution_description", ""),
+                    "mvp_phases": solution.get("mvp_features", []),  # mapped from features
+                    "prompts": obj.get("cursor_playbook", []),
+                })
+        # Return newest first by uuid time proxy (or just reverse read order)
+        items = items[-limit:]
+        items.reverse()
+        return items
+    except Exception:
+        return []
 
 def get_daily_usage(email: Optional[str]) -> int:
     """Get daily usage count for user"""
@@ -310,8 +390,13 @@ async def scrape(
         except Exception:
             pass
         
-        # Increment usage
-        increment_daily_usage(user_email)
+        # Increment usage by the number of posts processed in this batch
+        posts_processed = len(report) if isinstance(report, list) else 0
+        try:
+            increment_daily_usage_by_safe(user_email, posts_processed)
+        except Exception:
+            # Fallback to +1 if bulk increment fails
+            increment_daily_usage(user_email)
         
         # Prepare results for template
         formatted_results = []
@@ -333,7 +418,7 @@ async def scrape(
             "posts_per_subreddit": posts_per_subreddit,
             "comments_per_post": comments_per_post,
             "user_email": user_email,
-            "current_usage": current_usage + 1,
+            "current_usage": current_usage + posts_processed,
             "limit": limit
         })
         
@@ -359,6 +444,81 @@ async def select_idea(request: Request, idea_uuid: str = Form(...)):
         return RedirectResponse(url=f"/?idea={idea_uuid}", status_code=302)
     except Exception:
         return RedirectResponse(url="/", status_code=302)
+
+@app.get("/ideas", response_class=HTMLResponse)
+async def ideas_page(request: Request):
+    """Ideas browser: two-column layout with list + detail view."""
+    user_email = get_user_email_from_request(request)
+    can_scrape, current_usage, limit = can_user_scrape(user_email)
+
+    # Load list and selection
+    ideas = load_recent_ideas(limit=50)
+    selected_uuid = request.query_params.get("idea")
+    if not selected_uuid and ideas:
+        selected_uuid = ideas[0].get("uuid")
+    selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
+    selected_is_saved = is_saved(user_email, selected_uuid)
+
+    return templates.TemplateResponse("ideas.html", {
+        "request": request,
+        "user_email": user_email,
+        "can_scrape": can_scrape,
+        "current_usage": current_usage,
+        "limit": limit,
+        "is_verified": is_email_verified(user_email) if user_email else False,
+        "ideas": ideas,
+        "selected_idea_uuid": selected_uuid,
+        "selected_idea": selected_idea,
+        "selected_is_saved": selected_is_saved,
+    })
+
+@app.get("/api/ideas", response_class=JSONResponse)
+async def api_get_ideas(request: Request):
+    """Return the authenticated user's ideas as a simple list.
+
+    Schema: [{ id, title, subreddit, problem_text, idea_summary, mvp_phases, prompts }]
+    """
+    user_email = get_user_email_from_request(request)
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    data = load_user_ideas(user_email, limit=50)
+    return JSONResponse(content=data)
+
+@app.patch("/api/ideas/{idea_id}/status", response_class=JSONResponse)
+async def api_toggle_idea_status(idea_id: str, request: Request):
+    """Toggle or set saved status for an idea belonging to the authenticated user.
+
+    Body (optional): { "status": "saved" | "new" }
+    If body omitted, will toggle current status.
+    """
+    user_email = get_user_email_from_request(request)
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Ensure idea belongs to user (best-effort check)
+    idea = load_idea_by_uuid(idea_id)
+    if not idea or idea.get("owner_email") != user_email:
+        # Do not leak existence
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Parse desired status if provided
+    desired_status = None
+    try:
+        payload = await request.json()
+        if isinstance(payload, dict):
+            s = payload.get("status")
+            if s in ("saved", "new"):
+                desired_status = s
+    except Exception:
+        pass
+
+    current = is_saved(user_email, idea_id)
+    new_state = (not current) if desired_status is None else (desired_status == "saved")
+    ok = set_saved(user_email, idea_id, new_state)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Unable to update status")
+
+    return {"id": idea_id, "status": "saved" if new_state else "new"}
 
 @app.get("/verify", response_class=HTMLResponse)
 async def verify_email_page(request: Request):

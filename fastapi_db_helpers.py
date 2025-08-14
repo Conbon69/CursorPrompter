@@ -65,6 +65,30 @@ def increment_daily_usage(email: Optional[str]) -> bool:
         print(f"Error incrementing daily usage: {e}")
         return False
 
+def increment_daily_usage_by(email: Optional[str], amount: int) -> bool:
+    """Increment daily usage count for user in Supabase by a specified amount.
+
+    Falls back to a no-op if invalid params. Prefer using the *_safe wrapper.
+    """
+    if not sb or not email:
+        return False
+    if amount <= 0:
+        return True
+    try:
+        today = date.today().isoformat()
+        # Read current value (atomic RPC would be ideal; this is sufficient for our use case)
+        resp = sb.table("daily_usage").select("count").eq("email", email).eq("date", today).limit(1).execute()
+        if resp.data:
+            current = resp.data[0].get("count", 0) or 0
+            new_count = int(current) + int(amount)
+            sb.table("daily_usage").update({"count": new_count}).eq("email", email).eq("date", today).execute()
+        else:
+            sb.table("daily_usage").insert({"email": email, "date": today, "count": int(amount)}).execute()
+        return True
+    except Exception as e:
+        print(f"Error incrementing daily usage by amount: {e}")
+        return False
+
 def create_usage_table():
     """Create the daily_usage table in Supabase"""
     if not sb:
@@ -116,6 +140,17 @@ def increment_daily_usage_fallback(email: Optional[str]) -> bool:
     _usage_store[key] = _usage_store.get(key, 0) + 1
     return True
 
+def increment_daily_usage_by_fallback(email: Optional[str], amount: int) -> bool:
+    """Fallback in-memory usage tracking for development by a specific amount"""
+    if not email:
+        return False
+    if amount <= 0:
+        return True
+    today = date.today().isoformat()
+    key = f"{email}_{today}"
+    _usage_store[key] = _usage_store.get(key, 0) + int(amount)
+    return True
+
 # Use fallback if Supabase is not configured
 def get_daily_usage_safe(email: Optional[str]) -> int:
     """Get daily usage with fallback"""
@@ -130,3 +165,10 @@ def increment_daily_usage_safe(email: Optional[str]) -> bool:
         return increment_daily_usage(email)
     else:
         return increment_daily_usage_fallback(email) 
+
+def increment_daily_usage_by_safe(email: Optional[str], amount: int) -> bool:
+    """Increment daily usage with fallback by a specific amount"""
+    if sb:
+        return increment_daily_usage_by(email, amount)
+    else:
+        return increment_daily_usage_by_fallback(email, amount)
