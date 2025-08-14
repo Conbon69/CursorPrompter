@@ -20,5 +20,5 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY . .
 
 # Start gunicorn with uvicorn worker, binding to the injected $PORT
-CMD gunicorn main_fastapi:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+CMD gunicorn main_fastapi:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 600 --graceful-timeout 120 --keep-alive 120
 

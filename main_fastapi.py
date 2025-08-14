@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 import os
 import secrets
 from dotenv import load_dotenv
+from starlette.concurrency import run_in_threadpool
 
 # Load environment variables from .env file
 load_dotenv()
@@ -385,11 +386,12 @@ async def scrape(
         })
     
     try:
-        # Run the pipeline
-        results, report = run_pipeline(
-            subs=subreddit_list,
-            post_lim=posts_per_subreddit,
-            cmnt_lim=comments_per_post
+        # Run the blocking pipeline off the event loop to avoid worker timeouts
+        results, report = await run_in_threadpool(
+            run_pipeline,
+            subreddit_list,
+            posts_per_subreddit,
+            comments_per_post,
         )
         # Persist full results locally for the dashboard
         try:
