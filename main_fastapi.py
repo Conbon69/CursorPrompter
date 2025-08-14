@@ -72,8 +72,15 @@ app = FastAPI(title="Reddit SaaS Idea Finder", version="1.0.0")
 # Note: This FastAPI app runs on port 8000
 # The Streamlit version runs on port 8501
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files (ensure directory exists in environments where empty dirs aren't tracked)
+try:
+    if not os.path.isdir("static"):
+        os.makedirs("static", exist_ok=True)
+    if os.path.isdir("static"):
+        app.mount("/static", StaticFiles(directory="static"), name="static")
+except Exception:
+    # Non-fatal: templates currently inline styles; continue without /static
+    pass
 
 # Setup Jinja2 templates
 templates = Jinja2Templates(directory="templates")
