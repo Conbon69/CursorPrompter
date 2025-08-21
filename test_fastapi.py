@@ -18,7 +18,7 @@ def test_fastapi_app():
         response = requests.get(base_url)
         if response.status_code == 200:
             print("✅ GET / - Form page loads successfully")
-            if "Reddit SaaS Idea Finder" in response.text:
+            if "LaunchCtrl" in response.text:
                 print("✅ Form contains expected title")
             else:
                 print("❌ Form missing expected title")

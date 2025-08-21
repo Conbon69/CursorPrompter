@@ -68,7 +68,7 @@ from db_helpers import (
 )
 from fastapi_db_helpers import get_daily_usage_safe, increment_daily_usage_safe, increment_daily_usage_by_safe
 
-app = FastAPI(title="Reddit SaaS Idea Finder", version="1.0.0")
+app = FastAPI(title="LaunchCtrl", version="1.0.0")
 
 # Note: This FastAPI app runs on port 8000
 # The Streamlit version runs on port 8501
@@ -85,6 +85,29 @@ except Exception:
 
 # Setup Jinja2 templates
 templates = Jinja2Templates(directory="templates")
+
+# Human-friendly date formatting for templates
+def pretty_date(value: Optional[str]) -> str:
+    try:
+        if not value:
+            return ""
+        from datetime import datetime
+        s = str(value)
+        # Normalize common ISO formats
+        s = s.replace('Z', '+00:00')
+        try:
+            dt = datetime.fromisoformat(s)
+        except Exception:
+            # Last resort: keep raw string
+            return str(value)
+        hour_12 = (dt.hour % 12) or 12
+        am_pm = 'am' if dt.hour < 12 else 'pm'
+        month_abbr = dt.strftime('%b')
+        return f"{hour_12}:{dt.minute:02d}{am_pm} on {dt.day}-{month_abbr}-{dt.year}"
+    except Exception:
+        return str(value)
+
+templates.env.filters["pretty_date"] = pretty_date
 
 # Quota management
 FREE_LIMIT = 2
@@ -416,7 +439,8 @@ async def scrape(
                 "subreddit": result["reddit"]["subreddit"],
                 "analysis": result["analysis"],
                 "solution": result["solution"],
-                "playbook_prompts": result["cursor_playbook"]
+                "playbook_prompts": result["cursor_playbook"],
+                "created_at": (result.get("meta") or {}).get("scraped_at")
             })
         
         return templates.TemplateResponse("results.html", {

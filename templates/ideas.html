@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ideas - Reddit SaaS Idea Finder</title>
+    <title>Ideas - LaunchCtrl</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <script defer data-domain="launchctrl.ai" src="https://plausible.io/js/script.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
         .container { background: white; padding: 24px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -67,7 +69,7 @@
                     {% for idea in ideas %}
                     <a class="list-item {% if selected_idea_uuid and idea.uuid == selected_idea_uuid %}active{% endif %}" href="/ideas?idea={{ idea.uuid }}">
                         <div class="list-title">{{ idea.title }}</div>
-                        <div class="list-sub">r/{{ idea.subreddit }}</div>
+                        <div class="list-sub">r/{{ idea.subreddit }} • <span class="local-datetime" data-iso="{{ idea.created_at }}">{{ idea.created_at | pretty_date }}</span></div>
                     </a>
                     {% endfor %}
                 {% else %}
@@ -81,7 +83,7 @@
                     <div style="display:flex; justify-content: space-between; align-items: start; gap:12px;">
                         <div style="flex:1 1 auto;">
                             <h1 class="title">{{ selected_idea.reddit.title }}</h1>
-                            <div class="detail-sub">r/{{ selected_idea.reddit.subreddit }} • <a href="{{ selected_idea.reddit.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a></div>
+                            <div class="detail-sub">r/{{ selected_idea.reddit.subreddit }} • <a href="{{ selected_idea.reddit.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a> • <span class="local-datetime" data-iso="{{ selected_idea.meta.scraped_at }}">{{ selected_idea.meta.scraped_at | pretty_date }}</span></div>
                         </div>
                         <div>
                             <a href="/ideas" class="mobile-back" style="background:#6b7280; color:#fff; padding:8px 12px; border-radius:6px; text-decoration:none; margin-right:8px;">← Back</a>

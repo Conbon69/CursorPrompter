@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reddit SaaS Idea Finder</title>
+    <title>LaunchCtrl</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <script defer data-domain="launchctrl.ai" src="https://plausible.io/js/script.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -228,7 +230,7 @@
         </div>
     </div>
     <div class="container">
-        <h1>🪄 Reddit SaaS Idea Finder</h1>
+        <h1>🪄 LaunchCtrl</h1>
         
         <!-- Header with user info and quota -->
         <div class="header-section">
@@ -255,6 +257,21 @@
             </div>
         </div>
         
+        <div style="margin-top: 16px; padding: 18px 20px; background: #eef2ff; border-radius: 6px;">
+            <h3 style="margin: 0 0 8px 0;">What is LaunchCtrl?</h3>
+            <p style="margin: 0; color:#374151; line-height:1.55;">LaunchCtrl finds real problems on Reddit and turns them into an idea plus ready‑to‑use build prompts. Copy the prompts into Cursor’s Agent Mode (or similar) to generate a working starter fast.</p>
+        </div>
+
+        <div style="margin-top: 16px; padding: 20px; background: #f8f9fa; border-radius: 6px;">
+            <h3>How it works:</h3>
+            <ol>
+                <li>Enter subreddit names (comma-separated)</li>
+                <li>Set how many posts and comments to analyze</li>
+                <li>Click "Find SaaS Ideas" to start scraping</li>
+                <li>Get AI-generated business ideas with MVP plans</li>
+            </ol>
+        </div>
+
         <!-- Quota information -->
         <div class="quota-info">
             <h3>📊 Daily Limits</h3>
@@ -328,15 +345,6 @@
             </button>
         </form>
         
-        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 6px;">
-            <h3>How it works:</h3>
-            <ol>
-                <li>Enter subreddit names (comma-separated)</li>
-                <li>Set how many posts and comments to analyze</li>
-                <li>Click "Find SaaS Ideas" to start scraping</li>
-                <li>Get AI-generated business ideas with MVP plans</li>
-            </ol>
-        </div>
 
         <!-- Simple Ideas Dashboard -->
         <div style="margin: 24px 0 10px 0;">
@@ -361,7 +369,7 @@
                 <div style="display:flex; justify-content: space-between; gap:10px; align-items: start;">
                     <div style="flex:1;">
                         <div style="font-weight:700; font-size:18px; color:#111827;">{{ selected_idea.reddit.title }}</div>
-                        <div style="font-size: 13px; color:#6b7280; margin-top: 4px;">r/{{ selected_idea.reddit.subreddit }} • <a href="{{ selected_idea.reddit.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a></div>
+                        <div style="font-size: 13px; color:#6b7280; margin-top: 4px;">r/{{ selected_idea.reddit.subreddit }} • <a href="{{ selected_idea.reddit.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a> • <span class="local-datetime" data-iso="{{ selected_idea.meta.scraped_at }}">{{ selected_idea.meta.scraped_at | pretty_date }}</span></div>
                         <div style="margin-top:10px;">
                             <div style="font-weight:600; color:#111827;">Problem / Opportunity</div>
                             <div style="font-size:14px; color:#374151; margin-top:4px;">{{ selected_idea.analysis.problem_description or selected_idea.analysis.opportunity_description }}</div>
@@ -401,7 +409,7 @@
                         <div style="display:flex; justify-content: space-between; align-items: center; gap: 10px;">
                             <div style="flex:1;">
                                 <div style="font-weight: 600; color:#111827;">{{ idea.title }}</div>
-                                <div style="font-size: 13px; color:#6b7280; margin-top: 2px;">r/{{ idea.subreddit }} • <a href="{{ idea.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a></div>
+                                <div style="font-size: 13px; color:#6b7280; margin-top: 2px;">r/{{ idea.subreddit }} • <a href="{{ idea.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a> • <span class="local-datetime" data-iso="{{ idea.created_at }}">{{ idea.created_at | pretty_date }}</span></div>
                                 {% if idea.description %}
                                 <div style="font-size: 14px; color:#374151; margin-top: 6px;">{{ idea.description }}</div>
                                 {% endif %}
@@ -468,6 +476,30 @@
                 window.addEventListener('beforeunload', () => clearInterval(timer));
             } catch (_) { /* no-op */ }
         });
+    })();
+    </script>
+    <script>
+    (function() {
+        function fmt(dt) {
+            const hours = dt.getHours();
+            const h12 = ((hours % 12) || 12);
+            const mins = String(dt.getMinutes()).padStart(2, '0');
+            const ampm = hours < 12 ? 'am' : 'pm';
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            return `${h12}:${mins}${ampm} on ${dt.getDate()}-${months[dt.getMonth()]}-${dt.getFullYear()}`;
+        }
+        function applyLocalTime(container) {
+            const nodes = (container || document).querySelectorAll('.local-datetime[data-iso]');
+            nodes.forEach(el => {
+                const iso = el.getAttribute('data-iso');
+                if (!iso) return;
+                const date = new Date(iso);
+                if (isNaN(date.getTime())) return;
+                el.textContent = fmt(date);
+            });
+        }
+        applyLocalTime();
+        document.addEventListener('htmx:afterSwap', () => applyLocalTime());
     })();
     </script>
 </body>

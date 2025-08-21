@@ -165,10 +165,10 @@ def send_verification_email_fastapi(email: str, token: str, app_url: str) -> boo
         response = resend.Emails.send({
             "from": from_email,
             "to": [email],
-            "subject": "Verify your email - Reddit SaaS Idea Finder",
+            "subject": "Verify your email - LaunchCtrl",
             "html": f"""
             <div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">
-                <h2 style=\"color: #333;\">🚀 Welcome to Reddit SaaS Idea Finder!</h2>
+                <h2 style=\"color: #333;\">🚀 Welcome to LaunchCtrl!</h2>
                 <p>Thanks for signing up! Click the button below to verify your email address and unlock 15 scrapes per day:</p>
                 
                 <div style=\"text-align: center; margin: 30px 0;\">
