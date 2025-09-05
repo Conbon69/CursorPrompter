@@ -126,9 +126,10 @@ You are pair-programming inside **Cursor**.
 Goal: Produce a paste-ready playbook for Cursor. For each step (0–6) below, output the EXACT text the developer should paste into Cursor. Do not include labels like "Step 1:" or meta-instructions like "write a summary". No headings, explanations, or numbering—only the final prompt strings.
 
 Hard requirements:
-- Return JSON only in the shape: {"prompts": ["...", "...", "..."]}
+- Return JSON only in the shape: {{"prompts": ["...", "...", "..."]}}
 - Provide exactly 7 prompts (indices 0..6 correspond to the steps below)
 - Each prompt must be a complete instruction the developer can paste as-is
+- Each prompt should not include code, but instructions for Cursor to write the code
 
 ### Required sequence
 0) Context prompt – In ≤120 words, summarize the problem/opportunity, target market, and chosen MVP using the inputs below, then end with exactly: Respond 'Ready' if you understand and will wait for detailed tasks.
@@ -140,7 +141,7 @@ Hard requirements:
 6) Local run instructions – How to start, (optionally) seed data, and validate the flow; include copy-paste commands and a short Acceptance Checklist (3–5 bullets); no cloud dependencies.
 
 Example format (do not reuse content; illustration of structure only):
-{"prompts": [
+{{"prompts": [
   "<final text for step 0 ending with Respond 'Ready'...>",
   "<final text for step 1...>",
   "<final text for step 2...>",
@@ -148,7 +149,7 @@ Example format (do not reuse content; illustration of structure only):
   "<final text for step 4...>",
   "<final text for step 5...>",
   "<final text for step 6...>"
-]}
+]}}
 
 ### Problem Context
 {problem}

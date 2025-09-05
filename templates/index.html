@@ -575,7 +575,7 @@
             {% endif %}
         </div>
     </div>
-    <script id="selectedIdeaJson" type="application/json">{{ selected_idea | tojson }}</script>
+    <script id="selectedIdeaJson" type="application/json">{{ (selected_idea or {}) | tojson }}</script>
     <script>
     (function() {
         const form = document.querySelector('form[action="/scrape"]');
