@@ -25,6 +25,20 @@
             text-align: center;
             margin-bottom: 30px;
         }
+        .site-title { text-align:center; margin: 6px 0 20px 0; font-size: 34px; }
+        .utility-row { display:flex; justify-content:flex-end; align-items:center; font-size:13px; color:#6b7280; gap: 8px; }
+        .utility-row a { color:#2563eb; text-decoration:none; }
+        .utility-row .sep { color:#9ca3af; }
+        .hero-title { font-size: 26px; line-height: 1.25; color:#111827; text-align:center; margin: 8px 0 10px 0; }
+        .hero-sub { text-align:left; color:#374151; margin: 0 0 16px 0; max-width: 780px; }
+        .hero-how { text-align:left; color:#111827; margin: 8px 0 6px 0; text-decoration: underline; }
+        .btn-row { display:flex; justify-content:center; gap:12px; align-items:center; margin: 6px 0 8px 0; }
+        .btn-secondary { background: transparent; color:#111827; border:1px solid #e5e7eb; padding: 12px 22px; border-radius: 6px; font-size: 16px; text-decoration:none; cursor:pointer; }
+        .btn-secondary:hover { background:#f3f4f6; }
+        .chips { text-align:center; font-size: 13px; color:#6b7280; margin-bottom: 18px; }
+        .limits-panel { background:#f8f9fa; border:1px solid #e5e7eb; border-radius:6px; padding:12px; color:#374151; }
+        .limits-title { font-weight:600; margin:0 0 4px 0; }
+        .limits-note { font-size:13px; color:#6b7280; margin-top:4px; }
         .header-section {
             display: flex;
             justify-content: space-between;
@@ -137,6 +151,10 @@
             background: #6c757d;
             cursor: not-allowed;
         }
+        /* Narrower submit button in the centered row */
+        .btn-row button {
+            width: auto;
+        }
         .error {
             background: #f8d7da;
             color: #721c24;
@@ -218,6 +236,39 @@
             background: #007bff;
             transition: width .5s ease;
         }
+        /* Result card styles (shared with results page) */
+        .result-card { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; overflow: hidden; background:#fff; }
+        .result-header { background: #f8f9fa; padding: 15px; border-bottom: 1px solid #ddd; }
+        .result-title { font-size: 18px; font-weight: 600; color: #333; margin: 0 0 5px 0; }
+        .result-meta { font-size: 14px; color: #666; }
+        .result-meta a { color: #007bff; text-decoration: none; }
+        .result-meta a:hover { text-decoration: underline; }
+        .result-content { padding: 20px; }
+        .section { margin-bottom: 20px; }
+        .section h3 { color: #333; margin-bottom: 10px; font-size: 16px; }
+        .section-content { background: #f8f9fa; padding: 15px; border-radius: 6px; font-size: 14px; line-height: 1.5; }
+        .confidence-score { display: inline-block; background: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+        .tech-stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .tech-tag { background: #007bff; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .features-list { list-style: none; padding: 0; margin: 10px 0; }
+        .features-list li { background: #e9ecef; padding: 8px 12px; margin-bottom: 5px; border-radius: 4px; font-size: 14px; }
+        .copy-button { background: #28a745; color: #ffffff; border: none; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: 0; }
+        .copy-button:hover { background: #218838; }
+        .playbook-list { list-style: decimal; padding-left: 20px; }
+        .playbook-item { margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #007bff; }
+        .prompt-text { margin-bottom: 10px; line-height: 1.6; white-space: pre-wrap; }
+        .copy-all-button { margin-top: 15px; }
+        /* Example Idea Pack: left-align copy buttons (height unchanged) */
+        .example-prompts .copy-button { margin-left: 0; }
+        /* Compact idea list */
+        .idea-list { display: flex; flex-direction: column; gap: 8px; }
+        .idea-row { border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
+        .idea-title { font-weight: 600; color: #111827; margin: 0; font-size: 15px; }
+        .idea-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+        .idea-meta a { color: #2563eb; text-decoration: none; }
+        .idea-meta a:hover { text-decoration: underline; }
+        .idea-desc { font-size: 14px; color: #374151; margin-top: 6px; }
+        .btn-small { background:#007bff; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-size:12px; }
     </style>
 </head>
 <body>
@@ -226,65 +277,39 @@
             <div class="spinner"></div>
             <div id="loadingStage" class="stage-text">Preparing…</div>
             <div class="progress"><div id="loadingBar"></div></div>
-            <div class="sub-text">This can take ~30–90 seconds depending on subreddit size.</div>
+            <div class="sub-text">This takes about 30–60 seconds per post.</div>
         </div>
     </div>
     <div class="container">
-        <h1>🪄 LaunchCtrl</h1>
-        
-        <!-- Header with user info and quota -->
-        <div class="header-section">
-            <div class="user-info">
-                {% if user_email %}
-                    <span><strong>Email:</strong> {{ user_email }}</span>
-                    {% if is_verified %}
-                        <span class="quota-badge quota-ok">✓ Verified</span>
-                    {% else %}
-                        <span class="quota-badge quota-warning">⚠ Unverified</span>
-                    {% endif %}
-                {% else %}
-                    <span><strong>Anonymous User</strong></span>
-                {% endif %}
-            </div>
-            <div class="quota-status">
-                <div><strong>Usage:</strong> {{ current_usage }}/{{ limit }} today</div>
-                {% if user_email %}
-                    <a href="/logout" class="logout-button">Logout</a>
-                {% else %}
-                    <a href="/verify" class="verify-button">Verify Email</a>
-                    <a href="/signin" class="verify-button" style="margin-left: 10px;">Sign In</a>
-                {% endif %}
-            </div>
-        </div>
-        
-        <div style="margin-top: 16px; padding: 18px 20px; background: #eef2ff; border-radius: 6px;">
-            <h3 style="margin: 0 0 8px 0;">What is LaunchCtrl?</h3>
-            <p style="margin: 0; color:#374151; line-height:1.55;">LaunchCtrl finds real problems on Reddit and turns them into an idea plus ready‑to‑use build prompts. Copy the prompts into Cursor’s Agent Mode (or similar) to generate a working starter fast.</p>
-        </div>
-
-        <div style="margin-top: 16px; padding: 20px; background: #f8f9fa; border-radius: 6px;">
-            <h3>How it works:</h3>
-            <ol>
-                <li>Enter subreddit names (comma-separated)</li>
-                <li>Set how many posts and comments to analyze</li>
-                <li>Click "Find SaaS Ideas" to start scraping</li>
-                <li>Get AI-generated business ideas with MVP plans</li>
-            </ol>
-        </div>
-
-        <!-- Quota information -->
-        <div class="quota-info">
-            <h3>📊 Daily Limits</h3>
-            {% if user_email and is_verified %}
-                <p>✅ <strong>Verified user:</strong> {{ limit }} scrapes per day</p>
-            {% elif user_email %}
-                <p>⚠️ <strong>Unverified user:</strong> {{ limit }} scrapes per day</p>
-                <p>🔗 <a href="/verify" style="color: #007bff;">Verify your email</a> to get 15 scrapes per day!</p>
+        <div class="utility-row">
+            {% if user_email %}
+                <span>You’re signed in as {{ user_email }}</span>
+                <span class="sep">·</span>
+                <a href="/logout">Logout</a>
             {% else %}
-                <p>👤 <strong>Anonymous user:</strong> {{ limit }} scrapes per day</p>
-                <p>🔗 <a href="/verify" style="color: #007bff;">Verify your email</a> to get 15 scrapes per day!</p>
+                <span>You’re browsing as a guest.</span>
+                <span class="sep">·</span>
+                <a href="/verify">Verify email</a>
+                <span class="sep">·</span>
+                <a href="/signin">Sign in</a>
             {% endif %}
+            <span class="sep">·</span>
+            <span><strong>Usage:</strong> {{ current_usage }}/{{ limit }} today</span>
+            <span class="sep">·</span>
+            <a href="/feedback?from=/">Feedback</a>
         </div>
+        <h1 class="site-title">LaunchCtrl</h1>
+        <div class="hero">
+            <div class="hero-title">Find real problems, identify solutions, and get the prompts to build them.</div>
+            <div class="hero-how">How it works:</div>
+            <div class="hero-sub">Enter in a subreddit name below to scrape posts for problems, generate a project idea, then get a set of prompts for Cursor so you can build the solution and ship it.</div>
+        </div>
+        
+        <!-- Thin utility-only; usage counters removed from hero area -->
+        
+        
+
+        <!-- Quota info demoted: tucked below form as subtle helper copy -->
         
         {% if error %}
         <div class="error">
@@ -298,57 +323,151 @@
         </div>
         {% endif %}
         
-        <form method="POST" action="/scrape">
+        <form method="POST" action="/scrape" style="margin-top: 8px;">
             <div class="form-group">
-                <label for="subreddits">Subreddits to scrape:</label>
-                <textarea 
-                    id="subreddits" 
-                    name="subreddits" 
-                    placeholder="e.g., consulting, startups, ChatGPT&#10;Enter subreddit names separated by commas"
+                <label for="subreddit">Subreddit to analyze</label>
+                <input 
+                    type="text"
+                    id="subreddit"
+                    name="subreddit"
+                    placeholder="e.g., smallbusiness"
+                    value="{{ request.query_params.get('subreddit', '') }}"
                     required
-                >{{ request.query_params.get('subreddits', '') }}</textarea>
-                <div class="help-text">Enter subreddit names separated by commas (one per line or comma-separated)</div>
+                >
+                <div class="help-text">Pick one subreddit where people with budgets ask for help. Try subreddits like r/smallbusiness, r/restaurantowners, or r/vibecoding.</div>
             </div>
             
             <div class="form-row">
                 <div class="form-group">
-                    <label for="posts_per_subreddit">Posts per subreddit:</label>
+                    <label for="posts_per_subreddit">Posts to scan</label>
                     <input 
                         type="number" 
                         id="posts_per_subreddit" 
                         name="posts_per_subreddit" 
-                        value="2" 
+                        value="1" 
                         min="1" 
                         max="20"
                     >
+                    <div class="help-text">Select between 1-5 recent posts.</div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="comments_per_post">Comments per post:</label>
+                    <label for="comments_per_post">Comments per post</label>
                     <input 
                         type="number" 
                         id="comments_per_post" 
                         name="comments_per_post" 
-                        value="15" 
+                        value="20" 
                         min="1" 
                         max="50"
                     >
+                    <div class="help-text">Pick between 10 - 40 comments to find real pain points.</div>
                 </div>
             </div>
             
-            <button type="submit" {% if not can_scrape %}disabled{% endif %}>
-                {% if can_scrape %}
-                    🚀 Find SaaS Ideas
-                {% else %}
-                    ❌ Quota Exceeded
-                {% endif %}
-            </button>
+            <div class="btn-row">
+                <button type="submit" {% if not can_scrape %}disabled{% endif %}>
+                    {% if can_scrape %}
+                        Find Problems
+                    {% else %}
+                        Quota Exceeded
+                    {% endif %}
+                </button>
+            </div>
+            
         </form>
+        
+        <!-- Collapsible Example Idea Pack (closed by default) -->
+        <details id="example" class="result-card" style="margin-top:14px;">
+            <summary class="result-header" style="cursor:pointer;">
+                <div class="result-title">Example Idea Pack</div>
+                <div class="result-meta">A compact preview of what LaunchCtrl generates</div>
+            </summary>
+            <div class="result-content">
+                <div class="section">
+                    <h3>Source</h3>
+                    <div class="section-content">
+                        <div style="font-weight:600;">Reverse-Engineering Steam Games in Unity with AssetRipper + Windsurf AI</div>
+                        <div style="font-size: 13px; color:#6b7280; margin-top:6px;">
+                            r/vibecoding • <a href="https://www.reddit.com/r/vibecoding/" target="_blank">View on Reddit</a> • 6:52pm on 31-Aug-2025
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Problem Analysis</h3>
+                    <div class="section-content">
+                        There’s no streamlined tool or service that extracts Unity game assets and uses AI to automatically analyze and explain game mechanics, systems, and project structure for learning or reference.
+                        <div style="margin-top:10px;"><strong>Target Market:</strong> Unity developers, game designers, modders, and educators seeking to learn from or replicate existing game projects</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Solution Summary</h3>
+                    <div class="section-content">
+                        A desktop and web-accessible tool that wraps AssetRipper to extract Unity game assets, then feeds scenes, prefabs, scripts, and animations into an AI pipeline. The AI analyzes object hierarchies, code references, physics setups, and animation graphs to produce human-readable breakdowns of game mechanics, system interactions, and project architecture—presented in an interactive UI for learning, teaching, or modding.
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Build Prompts for Cursor</h3>
+                    <div class="section-content">
+                        <div class="prompt-text" style="margin:0 0 10px 0;">Step-by-step prompts to bootstrap the MVP. Copy any prompt or all prompts.</div>
+                        <ol class="playbook-list example-prompts">
+                            <li class="playbook-item">
+                                <div class="prompt-text">You are building an MVP for a tool that extracts Unity game assets using AssetRipper, then analyzes them with AI to explain game mechanics, systems, and project structure. Target users are Unity developers, game designers, modders, and educators aiming to learn from or replicate existing game projects. The chosen MVP is a minimal web service with endpoints to upload a Unity asset bundle, run AssetRipper and an AI pipeline, and return a basic analysis of one scene's hierarchy and mechanics. Respond 'Ready' if you understand and will wait for detailed tasks.</div>
+                                <button class="copy-button" data-example-index="1" type="button">Copy Prompt 1</button>
+                            </li>
+                            <li class="playbook-item">
+                                <div class="prompt-text">Initialize a new Node.js and TypeScript project in an empty directory. Set up Git with git init, create a README.md stub summarizing the project mission, add an MIT LICENSE, install TypeScript, Express, Prisma CLI, and other dependencies. Configure basic tooling: ESLint for linting, Prettier for formatting, Husky pre-commit hooks, and add a .env.example file. Show the shell commands you would run and the resulting file and folder structure.</div>
+                                <button class="copy-button" data-example-index="2" type="button">Copy Prompt 2</button>
+                            </li>
+                            <li class="playbook-item">
+                                <div class="prompt-text">Using Prisma, define the data model for the MVP. Include models for AssetUpload (id, filePath, status, createdAt), Scene (id, name, assetUploadId), GameObject, Component, and AnalysisResult. Create the schema.prisma file with these models, then run prisma migrate to generate the initial migration. Provide the full schema.prisma file and the generated SQL migration.</div>
+                                <button class="copy-button" data-example-index="3" type="button">Copy Prompt 3</button>
+                            </li>
+                            <li class="playbook-item">
+                                <div class="prompt-text">Implement the core backend logic in TypeScript with Express. Create endpoints: POST /upload to accept a Unity asset bundle, save it, start AssetRipper extraction, and record metadata; POST /analyze/:uploadId to run the AI pipeline on extracted data and save results; GET /analysis/:id to retrieve the analysis result. For each endpoint, write Jest unit-test stubs (without full implementation). Show the key files (server.ts, routes, controllers, and test stubs).</div>
+                                <button class="copy-button" data-example-index="4" type="button">Copy Prompt 4</button>
+                            </li>
+                            <li class="playbook-item">
+                                <div class="prompt-text">Create a minimal CLI tool in TypeScript to demo the flow locally. Implement a script (cli.ts) that takes a file path argument, calls POST /upload, polls or waits for analysis to complete, and prints the JSON result to the console. Provide the code for the CLI script and instructions to run it against a local dev server.</div>
+                                <button class="copy-button" data-example-index="5" type="button">Copy Prompt 5</button>
+                            </li>
+                            <li class="playbook-item">
+                                <div class="prompt-text">Write automated tests using Jest. Add unit tests for core functions (asset extraction handler and AI pipeline caller) and one happy-path integration test using supertest: spin up the Express server, upload a sample asset bundle fixture, mock AssetRipper and AI calls, and assert that a valid analysis result is returned. Provide the test files and any test configuration.</div>
+                                <button class="copy-button" data-example-index="6" type="button">Copy Prompt 6</button>
+                            </li>
+                            <li class="playbook-item">
+                                <div class="prompt-text">Provide detailed instructions for running the project locally. Include steps to install dependencies (npm install), copy .env.example to .env and configure variables, run prisma migrate, start the dev server (npm run dev), use the CLI to upload and analyze a sample bundle, and run all tests (npm test).</div>
+                                <button class="copy-button" data-example-index="7" type="button">Copy Prompt 7</button>
+                            </li>
+                        </ol>
+                        
+                    </div>
+                </div>
+            </div>
+        </details>
+        
+
+        <!-- Understated Daily Limits panel (no counters near hero) -->
+        
+
+        <!-- Slim LaunchCtrl note + email capture -->
+        <div style="margin-top:16px; padding:12px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc;">
+            <div style="font-weight:600; color:#111827; margin:0 0 6px 0;">Note from Connor, the creator: Want to try the next phase?</div>
+            <div style="color:#374151; font-size:14px; margin:0 0 10px 0;">Right now, this site just finds problems, and gives you prompts to build. I'm working to add automated web app creation and deployment next, so you can go from zero, to a working + deployed MVP that's ready to sell. Tag along below!</div>
+            <form method="POST" action="/notify" style="display:flex; gap:8px; align-items:center;">
+                <input type="email" name="email" placeholder="your@email.com" required style="flex:5; padding:10px 12px; border:1px solid #e5e7eb; border-radius:6px;" />
+                <button type="submit" style="background:#f3f4f6; color:#111827; border:1px solid #e5e7eb; padding:10px 8px; border-radius:6px; cursor:pointer; white-space:nowrap; width:auto; flex:0 0 auto;">Notify me</button>
+            </form>
+            <div class="limits-note" style="margin-top:6px;">No spam. Just launch updates and early access.</div>
+        </div>
         
 
         <!-- Simple Ideas Dashboard -->
         <div style="margin: 24px 0 10px 0;">
-            <h3 style="margin: 0 0 10px 0;">🗂️ Your Recent Ideas</h3>
+            <h3 style="margin: 0 0 10px 0;">Sample Ideas</h3>
             <!-- Quick chooser -->
             {% if ideas and ideas|length > 0 %}
             <form method="GET" action="/" style="margin: 0 0 12px 0; display:flex; gap:8px;">
@@ -365,72 +484,98 @@
             {% endif %}
 
             {% if selected_idea %}
-            <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fff; margin-bottom:12px;">
-                <div style="display:flex; justify-content: space-between; gap:10px; align-items: start;">
-                    <div style="flex:1;">
-                        <div style="font-weight:700; font-size:18px; color:#111827;">{{ selected_idea.reddit.title }}</div>
-                        <div style="font-size: 13px; color:#6b7280; margin-top: 4px;">r/{{ selected_idea.reddit.subreddit }} • <a href="{{ selected_idea.reddit.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a> • <span class="local-datetime" data-iso="{{ selected_idea.meta.scraped_at }}">{{ selected_idea.meta.scraped_at | pretty_date }}</span></div>
-                        <div style="margin-top:10px;">
-                            <div style="font-weight:600; color:#111827;">Problem / Opportunity</div>
-                            <div style="font-size:14px; color:#374151; margin-top:4px;">{{ selected_idea.analysis.problem_description or selected_idea.analysis.opportunity_description }}</div>
+            <div class="result-card">
+                <div class="result-header">
+                    <div class="result-title">{{ selected_idea.reddit.title }}</div>
+                    <div class="result-meta">
+                        <strong>r/{{ selected_idea.reddit.subreddit }}</strong> •
+                        <a href="{{ selected_idea.reddit.url }}" target="_blank">View on Reddit</a>
+                        {% if selected_idea.meta.scraped_at %}
+                        • <span class="local-datetime" data-iso="{{ selected_idea.meta.scraped_at }}">{{ selected_idea.meta.scraped_at | pretty_date }}</span>
+                        {% endif %}
+                        {# confidence hidden #}
+                    </div>
+                </div>
+                <div class="result-content">
+                    <div class="section">
+                        <h3>Problem Analysis</h3>
+                        <div class="section-content">
+                            {% if selected_idea.analysis.problem_description or selected_idea.analysis.opportunity_description %}
+                            <div>{{ selected_idea.analysis.problem_description or selected_idea.analysis.opportunity_description }}</div>
+                            {% endif %}
+                            {% if selected_idea.analysis.target_market %}
+                            <div style="margin-top: 10px;"><strong>Target Market:</strong> {{ selected_idea.analysis.target_market }}</div>
+                            {% endif %}
                         </div>
-                        <div style="margin-top:10px;">
-                            <div style="font-weight:600; color:#111827;">Target Market</div>
-                            <div style="font-size:14px; color:#374151; margin-top:4px;">{{ selected_idea.analysis.target_market }}</div>
-                        </div>
-                        {% if selected_idea.cursor_playbook and selected_idea.cursor_playbook|length > 0 %}
-                        <div style="margin-top:12px;">
-                            <div style="font-weight:600; color:#111827; display:flex; justify-content:space-between; align-items:center;">
-                                <span>Cursor Playbook Prompts</span>
+                    </div>
+
+                    <div class="section">
+                        <h3>Solution Summary</h3>
+                        <div class="section-content">
+                            {% if selected_idea.solution.solution_description %}
+                            <div>{{ selected_idea.solution.solution_description }}</div>
+                            {% endif %}
+                            {% if selected_idea.solution.mvp_features %}
+                            <div style="margin-top: 10px;">
+                                <div><strong>MVP Features:</strong></div>
+                                <ul class="features-list">
+                                    {% for f in selected_idea.solution.mvp_features %}
+                                    <li>{{ f }}</li>
+                                    {% endfor %}
+                                </ul>
                             </div>
-                            <ol style="margin-top:8px; padding-left:18px;">
-                                {% for p in selected_idea.cursor_playbook %}
-                                <li style="margin-bottom:8px; font-size:14px; color:#374151;">{{ p }}</li>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if selected_idea.cursor_playbook %}
+                    <div class="section">
+                        <h3>Cursor Playbook Prompts</h3>
+                        <div class="section-content">
+                            <p><em>Step-by-step prompts for building this MVP:</em></p>
+                            <ol class="playbook-list">
+                                {% for prompt in selected_idea.cursor_playbook %}
+                                <li class="playbook-item">
+                                    <div class="prompt-text">{{ prompt }}</div>
+                                    <button class="copy-button" data-prompt-index="{{ loop.index }}" aria-label="Copy Prompt {{ loop.index }} to clipboard" type="button">Copy Prompt {{ loop.index }}</button>
+                                </li>
                                 {% endfor %}
                             </ol>
+                            <button class="copy-button copy-all-button" id="copyAllPromptsBtn" aria-label="Copy all prompts to clipboard" type="button">Copy All Prompts</button>
                         </div>
-                        {% endif %}
                     </div>
-                    <form method="POST" action="/select" style="margin:0;">
-                        <input type="hidden" name="idea_uuid" value="{{ selected_idea.meta.uuid }}" />
-                        {% if selected_idea_uuid and selected_idea.meta.uuid == selected_idea_uuid %}
-                            <button type="submit" style="white-space:nowrap; background:#10b981; border:none; color:#fff; padding:8px 12px; border-radius:6px; cursor:pointer;">✓ Selected</button>
-                        {% else %}
-                            <button type="submit" style="white-space:nowrap; background:#111827; border:none; color:#fff; padding:8px 12px; border-radius:6px; cursor:pointer;">Select</button>
-                        {% endif %}
-                    </form>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
             {% if ideas and ideas|length > 0 %}
-                <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div class="idea-list">
                     {% for idea in ideas %}
-                    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff;">
-                        <div style="display:flex; justify-content: space-between; align-items: center; gap: 10px;">
-                            <div style="flex:1;">
-                                <div style="font-weight: 600; color:#111827;">{{ idea.title }}</div>
-                                <div style="font-size: 13px; color:#6b7280; margin-top: 2px;">r/{{ idea.subreddit }} • <a href="{{ idea.url }}" target="_blank" style="color:#2563eb; text-decoration:none;">Open post</a> • <span class="local-datetime" data-iso="{{ idea.created_at }}">{{ idea.created_at | pretty_date }}</span></div>
-                                {% if idea.description %}
-                                <div style="font-size: 14px; color:#374151; margin-top: 6px;">{{ idea.description }}</div>
-                                {% endif %}
-                            </div>
-                            <form method="POST" action="/select" style="margin:0;">
-                                <input type="hidden" name="idea_uuid" value="{{ idea.uuid }}" />
-                                {% if selected_idea_uuid and idea.uuid == selected_idea_uuid %}
-                                    <button type="submit" style="white-space:nowrap; background:#10b981; border:none; color:#fff; padding:8px 12px; border-radius:6px; cursor:pointer;">✓ Selected</button>
-                                {% else %}
-                                    <button type="submit" style="white-space:nowrap; background:#111827; border:none; color:#fff; padding:8px 12px; border-radius:6px; cursor:pointer;">Select</button>
-                                {% endif %}
-                            </form>
+                    <div class="idea-row">
+                        <div>
+                            <div class="idea-title">{{ idea.title }}</div>
+                            <div class="idea-meta">r/{{ idea.subreddit }} • <a href="{{ idea.url }}" target="_blank">View on Reddit</a>{% if idea.created_at %} • <span class="local-datetime" data-iso="{{ idea.created_at }}">{{ idea.created_at | pretty_date }}</span>{% endif %}</div>
+                            {% if idea.description %}
+                            <div class="idea-desc">{{ idea.description }}</div>
+                            {% endif %}
                         </div>
+                        <form method="POST" action="/select" style="margin:0;">
+                            <input type="hidden" name="idea_uuid" value="{{ idea.uuid }}" />
+                            <button type="submit" class="btn-small" aria-label="View idea details">View idea</button>
+                        </form>
                     </div>
                     {% endfor %}
                 </div>
             {% else %}
-                <div class="help-text">No ideas yet. Run your first scrape to populate this list.</div>
+                {% if user_email %}
+                    <div class="help-text">No ideas yet. Run your first scrape to populate this list.</div>
+                {% else %}
+                    <div class="help-text">No sample ideas available.</div>
+                {% endif %}
             {% endif %}
         </div>
     </div>
+    <script id="selectedIdeaJson" type="application/json">{{ selected_idea | tojson }}</script>
     <script>
     (function() {
         const form = document.querySelector('form[action="/scrape"]');
@@ -500,6 +645,89 @@
         }
         applyLocalTime();
         document.addEventListener('htmx:afterSwap', () => applyLocalTime());
+    })();
+    </script>
+    <script>
+    (function() {
+        // Selected idea prompt copying – mirrors results page behavior
+        var selected = null;
+        try {
+            var selNode = document.getElementById('selectedIdeaJson');
+            selected = selNode ? JSON.parse(selNode.textContent || 'null') : null;
+        } catch (e) { selected = null; }
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.setAttribute('role', 'status');
+            notification.setAttribute('aria-live', 'polite');
+            notification.textContent = message;
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: '
+                + (type === 'success' ? '#28a745' : '#dc3545')
+                + '; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+        function copyToClipboard(text, successMessage) {
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(function() {
+                showNotification(successMessage, 'success');
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+                alert(successMessage + '\n\n' + text);
+            });
+        }
+        // Delegate clicks for copy buttons to avoid inline JS
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('button.copy-button');
+            if (!btn) return;
+            const idxAttr = btn.getAttribute('data-prompt-index');
+            if (idxAttr && selected && selected.cursor_playbook) {
+                const idx = parseInt(idxAttr, 10);
+                if (!isNaN(idx) && idx > 0 && idx <= selected.cursor_playbook.length) {
+                    const prompt = selected.cursor_playbook[idx - 1];
+                    copyToClipboard(prompt, 'Prompt ' + idx + ' copied to clipboard!');
+                }
+            }
+        });
+        const copyAllBtn = document.getElementById('copyAllPromptsBtn');
+        if (copyAllBtn) {
+            copyAllBtn.addEventListener('click', function() {
+                if (!selected || !selected.cursor_playbook) return;
+                const all = selected.cursor_playbook.map(function(p, i) { return '=== PROMPT ' + (i+1) + ' ===\n' + p; }).join('\n\n');
+                copyToClipboard(all, 'All prompts copied to clipboard!');
+            });
+        }
+        // See example: open details and scroll into view
+        const seeExampleBtn = document.getElementById('seeExampleBtn');
+        const example = document.getElementById('example');
+        if (seeExampleBtn && example) {
+            seeExampleBtn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                example.open = true;
+                try { seeExampleBtn.setAttribute('aria-expanded', 'true'); } catch (_) {}
+                example.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+
+        // Copy example prompts: per-prompt and all
+        const examplePrompts = [
+            "You are building an MVP for a tool that extracts Unity game assets using AssetRipper, then analyzes them with AI to explain game mechanics, systems, and project structure. Target users are Unity developers, game designers, modders, and educators aiming to learn from or replicate existing game projects. The chosen MVP is a minimal web service with endpoints to upload a Unity asset bundle, run AssetRipper and an AI pipeline, and return a basic analysis of one scene's hierarchy and mechanics. Respond 'Ready' if you understand and will wait for detailed tasks.",
+            "Initialize a new Node.js and TypeScript project in an empty directory. Set up Git with git init, create a README.md stub summarizing the project mission, add an MIT LICENSE, install TypeScript, Express, Prisma CLI, and other dependencies. Configure basic tooling: ESLint for linting, Prettier for formatting, Husky pre-commit hooks, and add a .env.example file. Show the shell commands you would run and the resulting file and folder structure.",
+            "Using Prisma, define the data model for the MVP. Include models for AssetUpload (id, filePath, status, createdAt), Scene (id, name, assetUploadId), GameObject, Component, and AnalysisResult. Create the schema.prisma file with these models, then run prisma migrate to generate the initial migration. Provide the full schema.prisma file and the generated SQL migration.",
+            "Implement the core backend logic in TypeScript with Express. Create endpoints: POST /upload to accept a Unity asset bundle, save it, start AssetRipper extraction, and record metadata; POST /analyze/:uploadId to run the AI pipeline on extracted data and save results; GET /analysis/:id to retrieve the analysis result. For each endpoint, write Jest unit-test stubs (without full implementation). Show the key files (server.ts, routes, controllers, and test stubs).",
+            "Create a minimal CLI tool in TypeScript to demo the flow locally. Implement a script (cli.ts) that takes a file path argument, calls POST /upload, polls or waits for analysis to complete, and prints the JSON result to the console. Provide the code for the CLI script and instructions to run it against a local dev server.",
+            "Write automated tests using Jest. Add unit tests for core functions (asset extraction handler and AI pipeline caller) and one happy-path integration test using supertest: spin up the Express server, upload a sample asset bundle fixture, mock AssetRipper and AI calls, and assert that a valid analysis result is returned. Provide the test files and any test configuration.",
+            "Provide detailed instructions for running the project locally. Include steps to install dependencies (npm install), copy .env.example to .env and configure variables, run prisma migrate, start the dev server (npm run dev), use the CLI to upload and analyze a sample bundle, and run all tests (npm test)."
+        ];
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('button.copy-button[data-example-index]');
+            if (!btn) return;
+            const idxAttr = btn.getAttribute('data-example-index');
+            const idx = parseInt(idxAttr, 10);
+            if (!isNaN(idx) && idx > 0 && idx <= examplePrompts.length) {
+                copyToClipboard(examplePrompts[idx - 1], 'Example Prompt ' + idx + ' copied to clipboard!');
+            }
+        });
+        // Removed Copy All button per request
     })();
     </script>
 </body>

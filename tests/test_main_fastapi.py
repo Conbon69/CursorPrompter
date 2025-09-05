@@ -59,10 +59,10 @@ def test_home_page_smoke(client):
 def test_scrape_requires_subreddits(client):
     r = client.post(
         "/scrape",
-        data={"subreddits": "", "posts_per_subreddit": "2", "comments_per_post": "5"},
+        data={"subreddit": "", "posts_per_subreddit": "2", "comments_per_post": "5"},
     )
     assert r.status_code == 200
-    assert "Please enter at least one subreddit" in r.text
+    assert "Please enter a single subreddit" in r.text
 
 
 def test_scrape_success_with_mock(client, app_module, monkeypatch):
@@ -93,7 +93,7 @@ def test_scrape_success_with_mock(client, app_module, monkeypatch):
 
     r = client.post(
         "/scrape",
-        data={"subreddits": "testing", "posts_per_subreddit": "1", "comments_per_post": "2"},
+        data={"subreddit": "testing", "posts_per_subreddit": "1", "comments_per_post": "2"},
     )
     assert r.status_code == 200
     # Results page content

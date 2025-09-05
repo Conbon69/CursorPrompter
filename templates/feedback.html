@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback - LaunchCtrl</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 680px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
+        .container { background: white; padding: 24px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin: 0; }
+        .row { display:flex; justify-content: space-between; align-items:center; margin-bottom: 16px; }
+        .back { color:#007bff; text-decoration:none; }
+        .back:hover { text-decoration: underline; }
+        .form-group { margin-bottom: 16px; }
+        label { display:block; margin-bottom: 6px; font-weight:600; color:#374151; }
+        textarea, input[type="email"] { width:100%; padding:12px; border:2px solid #ddd; border-radius:6px; font-size:16px; box-sizing:border-box; }
+        textarea { min-height:140px; resize:vertical; }
+        textarea:focus, input[type="email"]:focus { outline:none; border-color:#007bff; }
+        button { background:#007bff; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-size:16px; }
+        .help { font-size: 13px; color:#6b7280; margin-top: 4px; }
+        .success { background:#d4edda; color:#155724; padding:10px; border-radius:6px; margin-bottom:12px; }
+        .error { background:#f8d7da; color:#721c24; padding:10px; border-radius:6px; margin-bottom:12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <h1>💬 Feedback</h1>
+            <a class="back" href="{{ from_path or '/' }}">← Back</a>
+        </div>
+
+        {% if success %}
+        <div class="success">{{ success }}</div>
+        {% endif %}
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/feedback">
+            <div class="form-group">
+                <label for="message">What happened? Any ideas or bugs?</label>
+                <textarea id="message" name="message" required>{{ message or '' }}</textarea>
+                <div class="help">Please avoid sharing secrets; messages are stored securely.</div>
+            </div>
+            <div class="form-group">
+                <label for="email">Reply email (optional)</label>
+                <input id="email" type="email" name="email" value="{{ email_value or user_email or '' }}" placeholder="you@example.com" />
+                <div class="help">If provided, I'll follow up here.</div>
+            </div>
+            <input type="hidden" name="from_path" value="{{ from_path or '/' }}" />
+            <button type="submit">Send feedback</button>
+        </form>
+    </div>
+</body>
+</html>
+
+

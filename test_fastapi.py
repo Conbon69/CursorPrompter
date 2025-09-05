@@ -31,7 +31,7 @@ def test_fastapi_app():
     # Test 2: POST /scrape with invalid data (should show error)
     try:
         response = requests.post(base_url + "/scrape", data={
-            "subreddits": "",
+            "subreddit": "",
             "posts_per_subreddit": "3",
             "comments_per_post": "10"
         })

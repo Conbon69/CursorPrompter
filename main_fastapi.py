@@ -12,6 +12,7 @@ import os
 import secrets
 from dotenv import load_dotenv
 from starlette.concurrency import run_in_threadpool
+from urllib.parse import quote_plus
 
 # Load environment variables from .env file
 load_dotenv()
@@ -45,7 +46,7 @@ load_dotenv('.env', override=True)
 print(f"After explicit load - RESEND_API_KEY: {'✅ Set' if os.getenv('RESEND_API_KEY') else '❌ Still not set'}")
 
 # Import the existing pipeline and auth systems
-from main import run_pipeline
+from main import run_pipeline, get_reddit_client
 
 # Email verification functions are now imported from fastapi_email_verification.py
 
@@ -122,6 +123,16 @@ SESSION_EXPIRY_DAYS = 30
 RESULTS_FILE = "results.jsonl"
 SELECTION_FILE = "selected_ideas.json"
 SAVED_FILE = "saved_ideas.json"
+FEEDBACK_FILE = "feedback.jsonl"
+
+# Supabase client for feedback (separate from quota helpers; falls back if unset)
+try:
+    from supabase import create_client as _create_client_fb  # type: ignore
+    _SB_URL_FB = os.getenv("SUPABASE_URL")
+    _SB_KEY_FB = os.getenv("SUPABASE_ANON_KEY")
+    sb_feedback = _create_client_fb(_SB_URL_FB, _SB_KEY_FB) if _SB_URL_FB and _SB_KEY_FB else None
+except Exception:
+    sb_feedback = None
 
 def create_session_token(email: str) -> str:
     """Create a secure session token"""
@@ -221,6 +232,50 @@ def set_saved(email: Optional[str], idea_uuid: str, saved: bool) -> bool:
     except Exception:
         return False
 
+def _append_feedback_to_file(obj: dict) -> None:
+    try:
+        with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+def store_feedback(message: str, *, email: Optional[str], path: Optional[str], user_agent: Optional[str]) -> bool:
+    """Store feedback in Supabase if configured; fallback to local JSONL.
+
+    Truncates fields to conservative lengths to avoid abuse.
+    """
+    try:
+        msg = (message or "").strip()
+        if not msg:
+            return False
+        # Basic size limits
+        msg = msg[:4000]
+        em = (email or "").strip()[:320] if email else None
+        p = (path or "").strip()[:512] if path else None
+        ua = (user_agent or "").strip()[:512] if user_agent else None
+
+        payload = {
+            "message": msg,
+            "email": em,
+            "path": p,
+            "user_agent": ua,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        if sb_feedback:
+            try:
+                sb_feedback.table("feedback").insert(payload).execute()
+                return True
+            except Exception:
+                # Fallback to file if DB write fails
+                _append_feedback_to_file(payload)
+                return True
+        else:
+            _append_feedback_to_file(payload)
+            return True
+    except Exception:
+        return False
+
 def append_results_to_file(results: List[dict], owner_email: Optional[str]) -> None:
     try:
         with open(RESULTS_FILE, "a", encoding="utf-8") as f:
@@ -232,7 +287,13 @@ def append_results_to_file(results: List[dict], owner_email: Optional[str]) -> N
     except Exception:
         pass
 
-def load_recent_ideas(limit: int = 20) -> List[dict]:
+def load_recent_ideas(limit: int = 20, owner_email: Optional[str] = None, anonymous_only: bool = False) -> List[dict]:
+    """Load recent ideas with optional ownership scoping.
+
+    - If anonymous_only is True: include only rows without owner_email.
+    - Else if owner_email is provided: include only rows where owner_email matches.
+    - Else: include all rows.
+    """
     if not os.path.exists(RESULTS_FILE):
         return []
     rows: List[dict] = []
@@ -244,10 +305,64 @@ def load_recent_ideas(limit: int = 20) -> List[dict]:
                     continue
                 try:
                     obj = json.loads(line)
+                    # Apply ownership filtering
+                    if anonymous_only:
+                        if obj.get("owner_email"):
+                            continue
+                    elif owner_email is not None:
+                        if obj.get("owner_email") != owner_email:
+                            continue
+
                     meta = obj.get("meta", {})
                     reddit = obj.get("reddit", {})
                     analysis = obj.get("analysis", {})
+                    solution = obj.get("solution", {})
                     # pick a human-friendly description
+                    desc = analysis.get("problem_description") or analysis.get("opportunity_description") or ""
+                    prompts_list = obj.get("cursor_playbook", []) or []
+                    rows.append({
+                        "uuid": meta.get("uuid"),
+                        "created_at": meta.get("scraped_at"),
+                        "title": reddit.get("title"),
+                        "subreddit": reddit.get("subreddit"),
+                        "url": reddit.get("url"),
+                        "description": desc,
+                        "solution_description": solution.get("solution_description", ""),
+                        "prompts_count": len(prompts_list),
+                    })
+                except Exception:
+                    continue
+        # sort by created_at desc if available
+        rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+        return rows[:limit]
+    except Exception:
+        return []
+
+def load_filtered_ideas(owner_email: Optional[str] = None, anonymous_only: bool = False) -> List[dict]:
+    """Load ideas with ownership scoping, without limiting or ordering.
+
+    Intended for cases where the caller wants to perform custom sampling or ordering.
+    """
+    if not os.path.exists(RESULTS_FILE):
+        return []
+    rows: List[dict] = []
+    try:
+        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if anonymous_only:
+                        if obj.get("owner_email"):
+                            continue
+                    elif owner_email is not None:
+                        if obj.get("owner_email") != owner_email:
+                            continue
+                    meta = obj.get("meta", {})
+                    reddit = obj.get("reddit", {})
+                    analysis = obj.get("analysis", {})
                     desc = analysis.get("problem_description") or analysis.get("opportunity_description") or ""
                     rows.append({
                         "uuid": meta.get("uuid"),
@@ -259,9 +374,7 @@ def load_recent_ideas(limit: int = 20) -> List[dict]:
                     })
                 except Exception:
                     continue
-        # sort by created_at desc if available
-        rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
-        return rows[:limit]
+        return rows
     except Exception:
         return []
 
@@ -346,6 +459,37 @@ def can_user_scrape(email: Optional[str]) -> tuple[bool, int, int]:
         current_usage = get_daily_usage(email)
         return current_usage < FREE_LIMIT, current_usage, FREE_LIMIT
 
+def _check_subreddit_valid(name: str) -> tuple[bool, str]:
+    """Return (is_valid, reason). Uses Reddit API; no local list required.
+
+    Skips validation if Reddit credentials are not configured to avoid blocking tests/dev.
+    """
+    try:
+        # Skip if credentials are missing
+        if not (os.getenv("REDDIT_CLIENT_ID") and os.getenv("REDDIT_CLIENT_SECRET")):
+            return True, ""
+        reddit = get_reddit_client()
+        sr = reddit.subreddit(name)
+        try:
+            # Force fetch; raises if not found/invalid/private
+            sr._fetch()  # type: ignore[attr-defined]
+            return True, ""
+        except Exception as e:  # Map common errors to friendly messages
+            try:
+                from prawcore.exceptions import NotFound, Redirect, Forbidden, BadRequest  # type: ignore
+                if isinstance(e, (NotFound, Redirect)):
+                    return False, "Subreddit not found. Please check the spelling."
+                if isinstance(e, Forbidden):
+                    return False, "This subreddit is private or banned. Please choose another."
+                if isinstance(e, BadRequest):
+                    return False, "Invalid subreddit name. Use letters, numbers, or underscores."
+            except Exception:
+                pass
+            return False, "Unable to validate subreddit. Please try again."
+    except Exception:
+        # If anything unexpected happens, do not block the user
+        return True, ""
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Show the main form for subreddit input with quota status"""
@@ -353,11 +497,35 @@ async def index(request: Request):
     can_scrape, current_usage, limit = can_user_scrape(user_email)
     
     # Load recent ideas and current selection
-    ideas = load_recent_ideas(limit=50)
+    if user_email:
+        ideas = load_recent_ideas(limit=50, owner_email=user_email)
+    else:
+        # Show a small random sample of anonymous ideas to unsigned users
+        all_anon = load_filtered_ideas(anonymous_only=True)
+        try:
+            from random import sample as _sample
+            k = 5
+            ideas = _sample(all_anon, k) if len(all_anon) > k else all_anon
+        except Exception:
+            ideas = all_anon[:5]
     # Allow viewing a specific idea via query param
     qp_idea = request.query_params.get("idea")
     selected_uuid = qp_idea or get_selected_idea_uuid(user_email)
     selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
+    # Enforce visibility scope for selected idea
+    if selected_idea is not None:
+        idea_owner = selected_idea.get("owner_email")
+        if user_email:
+            if idea_owner != user_email:
+                selected_idea = None
+                selected_uuid = None
+        else:
+            if idea_owner:
+                selected_idea = None
+                selected_uuid = None
+
+    # Optional error propagated via query param (for redirect flows)
+    qp_error = request.query_params.get("error")
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -368,13 +536,14 @@ async def index(request: Request):
         "is_verified": is_email_verified(user_email) if user_email else False,
         "ideas": ideas,
         "selected_idea_uuid": selected_uuid,
-        "selected_idea": selected_idea
+        "selected_idea": selected_idea,
+        "error": qp_error
     })
 
 @app.post("/scrape", response_class=HTMLResponse)
 async def scrape(
     request: Request,
-    subreddits: str = Form(...),
+    subreddit: str = Form(...),
     posts_per_subreddit: int = Form(default=2),
     comments_per_post: int = Form(default=15)
 ):
@@ -394,10 +563,9 @@ async def scrape(
             "error": f"Daily quota exceeded! You've used {current_usage}/{limit} scrapes today. Verify your email to get {VERIFIED_LIMIT} scrapes per day."
         })
     
-    # Parse subreddits (comma-separated)
-    subreddit_list = [s.strip() for s in subreddits.split(",") if s.strip()]
-    
-    if not subreddit_list:
+    # Validate single subreddit input
+    name = (subreddit or "").strip()
+    if not name or "," in name:
         return templates.TemplateResponse("index.html", {
             "request": request,
             "user_email": user_email,
@@ -405,8 +573,16 @@ async def scrape(
             "current_usage": current_usage,
             "limit": limit,
             "is_verified": is_email_verified(user_email) if user_email else False,
-            "error": "Please enter at least one subreddit"
+            "error": "Please enter a single subreddit name (no commas)"
         })
+    # Validate subreddit existence without storing lists
+    ok_sr, reason = _check_subreddit_valid(name)
+    if not ok_sr:
+        # Redirect back to home with error and prefilled subreddit
+        err = reason or "Subreddit not found. Please try again."
+        url = f"/?subreddit={quote_plus(name)}&error={quote_plus(err)}"
+        return RedirectResponse(url=url, status_code=302)
+    subreddit_list = [name]
     
     try:
         # Run the blocking pipeline off the event loop to avoid worker timeouts
@@ -422,13 +598,20 @@ async def scrape(
         except Exception:
             pass
         
-        # Increment usage by the number of posts processed in this batch
-        posts_processed = len(report) if isinstance(report, list) else 0
+        # Increment usage by the number of posts added (avoid counting duplicates or errors)
+        posts_processed = 0
+        if isinstance(report, list):
+            for item in report:
+                try:
+                    if (item or {}).get("status") == "Added":
+                        posts_processed += 1
+                except Exception:
+                    continue
         try:
             increment_daily_usage_by_safe(user_email, posts_processed)
         except Exception:
             # Fallback to +1 if bulk increment fails
-            increment_daily_usage(user_email)
+            increment_daily_usage_safe(user_email)
         
         # Prepare results for template
         formatted_results = []
@@ -485,12 +668,26 @@ async def ideas_page(request: Request):
     can_scrape, current_usage, limit = can_user_scrape(user_email)
 
     # Load list and selection
-    ideas = load_recent_ideas(limit=50)
+    if user_email:
+        ideas = load_recent_ideas(limit=50, owner_email=user_email)
+    else:
+        ideas = load_recent_ideas(limit=50, anonymous_only=True)
     selected_uuid = request.query_params.get("idea")
     if not selected_uuid and ideas:
         selected_uuid = ideas[0].get("uuid")
     selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
-    selected_is_saved = is_saved(user_email, selected_uuid)
+    # Enforce visibility scope for selected idea
+    if selected_idea is not None:
+        idea_owner = selected_idea.get("owner_email")
+        if user_email:
+            if idea_owner != user_email:
+                selected_idea = None
+                selected_uuid = None
+        else:
+            if idea_owner:
+                selected_idea = None
+                selected_uuid = None
+    selected_is_saved = is_saved(user_email, selected_uuid) if selected_uuid else False
 
     return templates.TemplateResponse("ideas.html", {
         "request": request,
@@ -503,6 +700,92 @@ async def ideas_page(request: Request):
         "selected_idea_uuid": selected_uuid,
         "selected_idea": selected_idea,
         "selected_is_saved": selected_is_saved,
+    })
+
+@app.post("/notify", response_class=HTMLResponse)
+async def notify_interest(request: Request, email: str = Form(...)):
+    """Capture interest for LaunchCtrl updates without leaving the page."""
+    user_email = get_user_email_from_request(request)
+    can_scrape, current_usage, limit = can_user_scrape(user_email)
+
+    # Store via feedback sink with a special message tag
+    try:
+        store_feedback("notify_interest", email=email, path=str(request.base_url) + "notify", user_agent=request.headers.get("user-agent"))
+        success_msg = "Thanks! We'll notify you about launch updates and early access."
+    except Exception:
+        success_msg = None
+
+    # Rebuild the same context as index
+    if user_email:
+        ideas = load_recent_ideas(limit=50, owner_email=user_email)
+    else:
+        all_anon = load_filtered_ideas(anonymous_only=True)
+        try:
+            from random import sample as _sample
+            k = 5
+            ideas = _sample(all_anon, k) if len(all_anon) > k else all_anon
+        except Exception:
+            ideas = all_anon[:5]
+
+    qp_idea = request.query_params.get("idea")
+    selected_uuid = qp_idea or get_selected_idea_uuid(user_email)
+    selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
+    if selected_idea is not None:
+        idea_owner = selected_idea.get("owner_email")
+        if user_email:
+            if idea_owner != user_email:
+                selected_idea = None
+                selected_uuid = None
+        else:
+            if idea_owner:
+                selected_idea = None
+                selected_uuid = None
+
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "user_email": user_email,
+        "can_scrape": can_scrape,
+        "current_usage": current_usage,
+        "limit": limit,
+        "is_verified": is_email_verified(user_email) if user_email else False,
+        "ideas": ideas,
+        "selected_idea_uuid": selected_uuid,
+        "selected_idea": selected_idea,
+        "success": success_msg or None,
+    })
+
+@app.get("/feedback", response_class=HTMLResponse)
+async def feedback_page(request: Request):
+    """Feedback form page."""
+    user_email = get_user_email_from_request(request)
+    ref = request.query_params.get("from") or str(request.headers.get("referer") or "")
+    return templates.TemplateResponse("feedback.html", {
+        "request": request,
+        "user_email": user_email,
+        "from_path": ref,
+    })
+
+@app.post("/feedback", response_class=HTMLResponse)
+async def feedback_submit(
+    request: Request,
+    message: str = Form(...),
+    email: Optional[str] = Form(default=None),
+    from_path: Optional[str] = Form(default=None),
+):
+    """Accept feedback submissions and store in Supabase or local file."""
+    user_email = get_user_email_from_request(request)
+    # Prefer signed-in email unless user explicitly entered one
+    final_email = email or user_email
+    ua = request.headers.get("user-agent")
+    ok = store_feedback(message, email=final_email, path=from_path or str(request.base_url), user_agent=ua)
+    return templates.TemplateResponse("feedback.html", {
+        "request": request,
+        "user_email": user_email,
+        "from_path": from_path,
+        "success": "Thanks for your feedback!" if ok else None,
+        "error": None if ok else "Sorry, we couldn't record your feedback. Please try again.",
+        "message": message,
+        "email_value": final_email or "",
     })
 
 @app.get("/api/ideas", response_class=JSONResponse)

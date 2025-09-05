@@ -219,9 +219,11 @@ def scrape_subreddit(name: str, post_limit: int, max_comments: int, already_seen
     return items
 
 # -------------------- 5. Main pipeline --------------------------------------
+from typing import Tuple
+
 def run_pipeline(
     subs: List[str], post_lim: int, cmnt_lim: int, delay: float = 1.2
-) -> (List[dict], list):
+) -> Tuple[List[dict], list]:
     results = []
     report = []
 
@@ -232,9 +234,27 @@ def run_pipeline(
         import sqlite3
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
-        cur.execute("SELECT post_id FROM scraped_posts")
-        seen_ids = {row[0] for row in cur.fetchall()}
+        try:
+            cur.execute("SELECT post_id FROM scraped_posts")
+            seen_ids = {row[0] for row in cur.fetchall()}
+        except Exception:
+            # table may not exist yet
+            seen_ids = set()
         conn.close()
+
+    # Prepare a writer connection to persist newly processed post IDs
+    write_conn = None
+    write_cur = None
+    try:
+        import sqlite3 as _sqlite3
+        write_conn = _sqlite3.connect(db_path)
+        write_cur = write_conn.cursor()
+        write_cur.execute(
+            "CREATE TABLE IF NOT EXISTS scraped_posts (post_id TEXT PRIMARY KEY, created_at TEXT)"
+        )
+    except Exception:
+        write_conn = None
+        write_cur = None
 
     for sub in subs:
         print(f"\n### r/{sub}")
@@ -242,6 +262,15 @@ def run_pipeline(
         posts = scrape_subreddit(sub, post_lim, cmnt_lim, already_seen_ids=seen_ids)
         for post in posts:
             seen_ids.add(post["id"])
+            # Persist this post id to avoid reprocessing in future runs
+            try:
+                if write_cur is not None:
+                    write_cur.execute(
+                        "INSERT OR IGNORE INTO scraped_posts (post_id, created_at) VALUES (?, ?)",
+                        (post["id"], datetime.utcnow().isoformat()),
+                    )
+            except Exception:
+                pass
             # Build structured context with more content
             full_text = build_context(post, max_comments=10)
             if len(full_text) > 400000:
@@ -337,6 +366,12 @@ def run_pipeline(
             print(f"   ✓ Added: {post['title'][:70]}")
             report.append(post_report)
             time.sleep(delay)
+    try:
+        if write_conn is not None:
+            write_conn.commit()
+            write_conn.close()
+    except Exception:
+        pass
     return results, report
 
 # -------------------- 6. CLI entrypoint -------------------------------------

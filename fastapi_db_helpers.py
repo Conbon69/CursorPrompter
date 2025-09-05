@@ -41,29 +41,8 @@ def get_daily_usage(email: Optional[str]) -> int:
         return 0
 
 def increment_daily_usage(email: Optional[str]) -> bool:
-    """Increment daily usage count for user in Supabase"""
-    if not sb or not email:
-        return False
-    
-    try:
-        today = date.today().isoformat()
-        
-        # Try to update existing record
-        response = sb.table("daily_usage").update({"count": "count + 1"}).eq("email", email).eq("date", today).execute()
-        
-        if not response.data:
-            # Create new record if none exists
-            response = sb.table("daily_usage").insert({
-                "email": email,
-                "date": today,
-                "count": 1
-            }).execute()
-        
-        return True
-        
-    except Exception as e:
-        print(f"Error incrementing daily usage: {e}")
-        return False
+    """Increment daily usage count for user in Supabase (delegates to increment by 1)."""
+    return increment_daily_usage_by(email, 1)
 
 def increment_daily_usage_by(email: Optional[str], amount: int) -> bool:
     """Increment daily usage count for user in Supabase by a specified amount.
@@ -122,53 +101,62 @@ def create_usage_table():
 _usage_store = {}
 
 def get_daily_usage_fallback(email: Optional[str]) -> int:
-    """Fallback in-memory usage tracking for development"""
-    if not email:
-        return 0
-    
+    """Fallback in-memory usage tracking for development (supports anonymous)."""
+    anon_safe_email = email or "anonymous"
     today = date.today().isoformat()
-    key = f"{email}_{today}"
+    key = f"{anon_safe_email}_{today}"
     return _usage_store.get(key, 0)
 
 def increment_daily_usage_fallback(email: Optional[str]) -> bool:
-    """Fallback in-memory usage tracking for development"""
-    if not email:
-        return False
-    
+    """Fallback in-memory usage tracking for development (supports anonymous)."""
+    anon_safe_email = email or "anonymous"
     today = date.today().isoformat()
-    key = f"{email}_{today}"
+    key = f"{anon_safe_email}_{today}"
     _usage_store[key] = _usage_store.get(key, 0) + 1
     return True
 
 def increment_daily_usage_by_fallback(email: Optional[str], amount: int) -> bool:
-    """Fallback in-memory usage tracking for development by a specific amount"""
-    if not email:
-        return False
+    """Fallback in-memory usage tracking for development by a specific amount (supports anonymous)."""
     if amount <= 0:
         return True
     today = date.today().isoformat()
-    key = f"{email}_{today}"
+    anon_safe_email = email or "anonymous"
+    key = f"{anon_safe_email}_{today}"
     _usage_store[key] = _usage_store.get(key, 0) + int(amount)
     return True
 
 # Use fallback if Supabase is not configured
 def get_daily_usage_safe(email: Optional[str]) -> int:
-    """Get daily usage with fallback"""
-    if sb:
+    """Get daily usage with fallback. Anonymous users always use fallback to avoid DB writes."""
+    if not sb or not email:
+        return get_daily_usage_fallback(email)
+    try:
         return get_daily_usage(email)
-    else:
+    except Exception:
         return get_daily_usage_fallback(email)
 
 def increment_daily_usage_safe(email: Optional[str]) -> bool:
-    """Increment daily usage with fallback"""
-    if sb:
-        return increment_daily_usage(email)
-    else:
-        return increment_daily_usage_fallback(email) 
+    """Increment daily usage with fallback. Anonymous users use fallback."""
+    if not sb or not email:
+        return increment_daily_usage_fallback(email)
+    ok = False
+    try:
+        ok = increment_daily_usage(email)
+    except Exception:
+        ok = False
+    if not ok:
+        return increment_daily_usage_fallback(email)
+    return True
 
 def increment_daily_usage_by_safe(email: Optional[str], amount: int) -> bool:
-    """Increment daily usage with fallback by a specific amount"""
-    if sb:
-        return increment_daily_usage_by(email, amount)
-    else:
+    """Increment daily usage with fallback by a specific amount. Anonymous users use fallback."""
+    if not sb or not email:
         return increment_daily_usage_by_fallback(email, amount)
+    ok = False
+    try:
+        ok = increment_daily_usage_by(email, amount)
+    except Exception:
+        ok = False
+    if not ok:
+        return increment_daily_usage_by_fallback(email, amount)
+    return True
