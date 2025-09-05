@@ -99,7 +99,7 @@ You are a senior software architect and business analyst.
 • If the post describes a business opportunity, propose how to replicate or address that opportunity with a new product, service, or SaaS.
 • Provide 1–3 features *specific* to the problem, need, or opportunity & target market.
 • Explicitly **DO NOT** propose a generic CRUD task manager / kanban / to‑do app.  
-• MVP should be buildable in ≈2 weeks.
+• MVP should be buildable in ≈a few days using AI coding tools like Cursor's agent mode.
 
 Problem or Opportunity
 ----------------------
@@ -121,32 +121,34 @@ Return JSON:
 """
 
 CURSOR_PLAYBOOK_PROMPT = """\
-You are pair‑programming inside **Cursor**.
+You are pair-programming inside **Cursor**.
 
-Create an ordered list of prompts the developer can paste into Cursor, one by
-one, to build the MVP below.  Each prompt can build off of the previous one.
+Goal: Produce a paste-ready playbook for Cursor. For each step (0–6) below, output the EXACT text the developer should paste into Cursor. Do not include labels like "Step 1:" or meta-instructions like "write a summary". No headings, explanations, or numbering—only the final prompt strings.
+
+Hard requirements:
+- Return JSON only in the shape: {"prompts": ["...", "...", "..."]}
+- Provide exactly 7 prompts (indices 0..6 correspond to the steps below)
+- Each prompt must be a complete instruction the developer can paste as-is
 
 ### Required sequence
-0. **Context prompt** – Explain the problem, target market, and the chosen MVP
-   in ≤ 120 words. Finish with:  
-   > "Respond 'Ready' if you understand and will wait for detailed tasks."
+0) Context prompt – In ≤120 words, summarize the problem/opportunity, target market, and chosen MVP using the inputs below, then end with exactly: Respond 'Ready' if you understand and will wait for detailed tasks.
+1) Project bootstrap – Initialize repo and minimal stack; give shell commands and expected files; keep stack tiny (Python 3.11 + FastAPI + SQLite OR Node 20 + Express + SQLite); include run commands.
+2) Data model & schema – Only if persistence is truly required; otherwise state that no DB is needed. If needed, use a single-file SQLite DB or a single JSON file with one table/collection and a tiny seed.
+3) Core backend logic & endpoints – Implement exactly the 1–3 MVP features; provide clear validation and error handling; include curl examples with expected responses; include unit-test stubs.
+4) Minimal UI or CLI – Provide only what’s required to demo locally (one server-rendered HTML page with a simple form OR a single CLI). No CSS frameworks or auth.
+5) Automated tests – One unit test per feature plus one happy-path integration test; include the command to run tests and the expected passing output line.
+6) Local run instructions – How to start, (optionally) seed data, and validate the flow; include copy-paste commands and a short Acceptance Checklist (3–5 bullets); no cloud dependencies.
 
-1. **Project bootstrap**  
-   * Git repo init, README stub, MIT license  
-   * Basic tooling: lint / format / .env.example
-
-2. **Data model & schema** – full schema with migrations (e.g. Prisma, Alembic,
-   or Mongoose).
-
-3. **Core backend logic & endpoints** – implement the 1‑3 MVP features with
-   unit‑test stubs.
-
-4. **Minimal UI or CLI** – only what's needed to demo the features locally.
-
-5. **Automated tests** – unit + one happy‑path integration test.
-
-6. **Local run instructions** – how to start the dev server, seed sample data,
-   and test the flow.
+Example format (do not reuse content; illustration of structure only):
+{"prompts": [
+  "<final text for step 0 ending with Respond 'Ready'...>",
+  "<final text for step 1...>",
+  "<final text for step 2...>",
+  "<final text for step 3...>",
+  "<final text for step 4...>",
+  "<final text for step 5...>",
+  "<final text for step 6...>"
+]}
 
 ### Problem Context
 {problem}
@@ -157,9 +159,50 @@ one, to build the MVP below.  Each prompt can build off of the previous one.
 ### Solution Description
 {solution}
 
-Return **JSON only** with one key `prompts` whose value is the array of prompt
-strings.
+Return JSON only with the key `prompts` as specified above.
 """
+
+
+#CURSOR_PLAYBOOK_PROMPT = """\
+#You are pair‑programming inside **Cursor**.
+
+#Create an ordered list of prompts the developer can paste into Cursor, one by
+#one, to build the MVP below.  Each prompt can build off of the previous one.
+
+### Required sequence
+#0. **Context prompt** – Explain the problem, target market, and the chosen MVP
+#   in ≤ 120 words. Finish with:  
+#   > "Respond 'Ready' if you understand and will wait for detailed tasks."
+#
+#1. **Project bootstrap**  
+#   * Git repo init, README stub, MIT license  
+#   * Basic tooling: lint / format / .env.example
+#
+#2. **Data model & schema** – full schema with migrations (e.g. Prisma, Alembic,
+ #  or Mongoose).
+#
+#3. **Core backend logic & endpoints** – implement the 1‑3 MVP features with
+ #  unit‑test stubs.
+
+#4. **Minimal UI or CLI** – only what's needed to demo the features locally.
+#
+#5. **Automated tests** – unit + one happy‑path integration test.
+
+#6. **Local run instructions** – how to start the dev server, seed sample data,
+#   and test the flow.
+
+### Problem Context
+# {problem}
+
+### Target Market
+#{market}
+
+### Solution Description
+#{solution}
+
+#Return **JSON only** with one key `prompts` whose value is the array of prompt
+#strings.
+#"""
 
 
 # -------------------- 3. Helper: OpenAI → JSON ------------------------------
