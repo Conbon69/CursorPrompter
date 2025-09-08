@@ -124,6 +124,7 @@ RESULTS_FILE = "results.jsonl"
 SELECTION_FILE = "selected_ideas.json"
 SAVED_FILE = "saved_ideas.json"
 FEEDBACK_FILE = "feedback.jsonl"
+CURATED_FILE = "curated_samples.json"
 
 # Supabase client for feedback (separate from quota helpers; falls back if unset)
 try:
@@ -133,6 +134,15 @@ try:
     sb_feedback = _create_client_fb(_SB_URL_FB, _SB_KEY_FB) if _SB_URL_FB and _SB_KEY_FB else None
 except Exception:
     sb_feedback = None
+
+# Supabase client for storing and reading scrape results (separate handle to keep intents clear)
+try:
+    from supabase import create_client as _create_client_results  # type: ignore
+    _SB_URL_RESULTS = os.getenv("SUPABASE_URL")
+    _SB_KEY_RESULTS = os.getenv("SUPABASE_ANON_KEY")
+    sb_results = _SB_URL_RESULTS and _SB_KEY_RESULTS and _create_client_results(_SB_URL_RESULTS, _SB_KEY_RESULTS) or None
+except Exception:
+    sb_results = None
 
 def create_session_token(email: str) -> str:
     """Create a secure session token"""
@@ -276,6 +286,213 @@ def store_feedback(message: str, *, email: Optional[str], path: Optional[str], u
     except Exception:
         return False
 
+def _map_result_row_for_insert(result: dict, owner_email: Optional[str]) -> dict:
+    """Map one pipeline result to the scraped_results row shape."""
+    meta = result.get("meta", {})
+    reddit = result.get("reddit", {})
+    return {
+        "uuid": meta.get("uuid"),
+        "scraped_at": meta.get("scraped_at"),
+        "subreddit": reddit.get("subreddit"),
+        "reddit_url": reddit.get("url"),
+        "reddit_title": reddit.get("title"),
+        "reddit_id": reddit.get("id"),
+        "analysis": result.get("analysis") or {},
+        "solution": result.get("solution") or {},
+        "cursor_playbook": result.get("cursor_playbook") or [],
+        "user_id": owner_email,
+        # created_at is DB default; omit for clarity
+    }
+
+def insert_results_to_supabase(results: List[dict], owner_email: Optional[str]) -> bool:
+    """Insert a batch of results into Supabase scraped_results. Returns True on success.
+
+    Uses upsert on uuid for idempotency. No-op if sb_results is not configured.
+    """
+    if not sb_results:
+        return False
+    try:
+        rows = [_map_result_row_for_insert(r, owner_email) for r in results]
+        # Filter out rows missing uuid to avoid errors
+        rows = [r for r in rows if r.get("uuid")]
+        if not rows:
+            return True
+        sb_results.table("scraped_results").upsert(rows, on_conflict="uuid").execute()
+        return True
+    except Exception:
+        return False
+
+def _fetch_user_seen_reddit_ids(owner_email: Optional[str]) -> List[str]:
+    """Return list of reddit_id values already saved for this user in Supabase.
+
+    Falls back to local file scan if Supabase not configured.
+    """
+    if not owner_email:
+        return []
+    # Prefer Supabase
+    try:
+        if sb_results:
+            resp = (
+                sb_results.table("scraped_results")
+                .select("reddit_id")
+                .eq("user_id", owner_email)
+                .limit(2000)
+                .execute()
+            )
+            return [r.get("reddit_id") for r in (resp.data or []) if r.get("reddit_id")]
+    except Exception:
+        pass
+    # Fallback: scan local results file for this owner
+    ids: List[str] = []
+    try:
+        if os.path.exists(RESULTS_FILE):
+            with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        if obj.get("owner_email") == owner_email:
+                            rid = ((obj.get("reddit") or {}).get("id"))
+                            if rid:
+                                ids.append(rid)
+                    except Exception:
+                        continue
+    except Exception:
+        return []
+    return ids
+
+def _map_row_to_simple_idea(row: dict) -> dict:
+    """Map a scraped_results row to the simplified card used in lists."""
+    return {
+        "uuid": row.get("uuid"),
+        "created_at": row.get("scraped_at") or row.get("created_at"),
+        "title": row.get("reddit_title"),
+        "subreddit": row.get("subreddit"),
+        "url": row.get("reddit_url"),
+        "description": (row.get("analysis") or {}).get("problem_description") or (row.get("analysis") or {}).get("opportunity_description") or "",
+    }
+
+def load_recent_ideas_supabase(limit: int = 20, owner_email: Optional[str] = None, anonymous_only: bool = False) -> List[dict]:
+    if not sb_results:
+        return []
+    try:
+        q = sb_results.table("scraped_results").select("uuid,scraped_at,subreddit,reddit_url,reddit_title,analysis,user_id").order("scraped_at", desc=True)
+        if anonymous_only:
+            q = q.is_('user_id', None)  # type: ignore[attr-defined]
+        elif owner_email is not None:
+            q = q.eq("user_id", owner_email)
+        data = q.limit(limit).execute().data or []
+        return [_map_row_to_simple_idea(r) for r in data]
+    except Exception:
+        return []
+
+def _read_curated_file() -> List[dict]:
+    if not os.path.exists(CURATED_FILE):
+        return []
+    try:
+        with open(CURATED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def load_curated_ideas(limit: int = 5) -> List[dict]:
+    rows: List[dict] = []
+    data = _read_curated_file()
+    for obj in data:
+        try:
+            meta = obj.get("meta", {})
+            reddit = obj.get("reddit", {})
+            analysis = obj.get("analysis", {})
+            desc = analysis.get("problem_description") or analysis.get("opportunity_description") or ""
+            rows.append({
+                "uuid": meta.get("uuid"),
+                "created_at": meta.get("scraped_at"),
+                "title": reddit.get("title"),
+                "subreddit": reddit.get("subreddit"),
+                "url": reddit.get("url"),
+                "description": desc,
+            })
+        except Exception:
+            continue
+    # newest first by created_at
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows[:limit]
+
+def load_curated_idea_by_uuid(idea_uuid: Optional[str]) -> Optional[dict]:
+    if not idea_uuid:
+        return None
+    data = _read_curated_file()
+    for obj in data:
+        try:
+            if (obj.get("meta") or {}).get("uuid") == idea_uuid:
+                # Ensure shape mirrors DB/file loader and add owner_email=None
+                return {
+                    "meta": obj.get("meta") or {},
+                    "reddit": obj.get("reddit") or {},
+                    "analysis": obj.get("analysis") or {},
+                    "solution": obj.get("solution") or {},
+                    "cursor_playbook": obj.get("cursor_playbook") or [],
+                    "owner_email": None,
+                }
+        except Exception:
+            continue
+    return None
+
+def load_idea_by_uuid_supabase(idea_uuid: str) -> Optional[dict]:
+    if not sb_results or not idea_uuid:
+        return None
+    try:
+        resp = sb_results.table("scraped_results").select("uuid,scraped_at,subreddit,reddit_url,reddit_title,reddit_id,analysis,solution,cursor_playbook,user_id").eq("uuid", idea_uuid).limit(1).execute()
+        rows = resp.data or []
+        if not rows:
+            return None
+        r = rows[0]
+        return {
+            "meta": {"uuid": r.get("uuid"), "scraped_at": r.get("scraped_at") or r.get("created_at")},
+            "reddit": {
+                "subreddit": r.get("subreddit"),
+                "url": r.get("reddit_url"),
+                "title": r.get("reddit_title"),
+                "id": r.get("reddit_id"),
+            },
+            "analysis": r.get("analysis") or {},
+            "solution": r.get("solution") or {},
+            "cursor_playbook": r.get("cursor_playbook") or [],
+            "owner_email": r.get("user_id"),
+        }
+    except Exception:
+        return None
+
+def load_user_ideas_supabase(email: str, limit: int = 50) -> List[dict]:
+    if not sb_results or not email:
+        return []
+    try:
+        resp = (
+            sb_results.table("scraped_results")
+            .select("uuid,subreddit,reddit_title,analysis,solution,cursor_playbook,scraped_at")
+            .eq("user_id", email)
+            .order("scraped_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        items: List[dict] = []
+        for row in (resp.data or []):
+            items.append({
+                "id": row.get("uuid"),
+                "title": row.get("reddit_title"),
+                "subreddit": row.get("subreddit"),
+                "problem_text": (row.get("analysis") or {}).get("problem_description") or (row.get("analysis") or {}).get("opportunity_description") or "",
+                "idea_summary": (row.get("solution") or {}).get("solution_description", ""),
+                "mvp_phases": (row.get("solution") or {}).get("mvp_features", []),
+                "prompts": row.get("cursor_playbook") or [],
+            })
+        return items
+    except Exception:
+        return []
+
 def append_results_to_file(results: List[dict], owner_email: Optional[str]) -> None:
     try:
         with open(RESULTS_FILE, "a", encoding="utf-8") as f:
@@ -294,6 +511,14 @@ def load_recent_ideas(limit: int = 20, owner_email: Optional[str] = None, anonym
     - Else if owner_email is provided: include only rows where owner_email matches.
     - Else: include all rows.
     """
+    # Prefer Supabase if configured
+    try:
+        if sb_results:
+            items = load_recent_ideas_supabase(limit=limit, owner_email=owner_email, anonymous_only=anonymous_only)
+            if items:
+                return items
+    except Exception:
+        pass
     if not os.path.exists(RESULTS_FILE):
         return []
     rows: List[dict] = []
@@ -343,6 +568,12 @@ def load_filtered_ideas(owner_email: Optional[str] = None, anonymous_only: bool 
 
     Intended for cases where the caller wants to perform custom sampling or ordering.
     """
+    # Prefer Supabase if configured
+    try:
+        if sb_results:
+            return load_recent_ideas_supabase(limit=500, owner_email=owner_email, anonymous_only=anonymous_only)
+    except Exception:
+        pass
     if not os.path.exists(RESULTS_FILE):
         return []
     rows: List[dict] = []
@@ -379,6 +610,11 @@ def load_filtered_ideas(owner_email: Optional[str] = None, anonymous_only: bool 
         return []
 
 def load_idea_by_uuid(idea_uuid: str) -> Optional[dict]:
+    # Prefer Supabase if configured
+    if sb_results:
+        idea = load_idea_by_uuid_supabase(idea_uuid)
+        if idea is not None:
+            return idea
     if not idea_uuid or not os.path.exists(RESULTS_FILE):
         return None
     try:
@@ -400,6 +636,14 @@ def load_idea_by_uuid(idea_uuid: str) -> Optional[dict]:
 
 def load_user_ideas(email: str, limit: int = 50) -> List[dict]:
     """Load recent ideas for a specific owner (scoped to authenticated user)."""
+    # Prefer Supabase if configured
+    if sb_results:
+        try:
+            items = load_user_ideas_supabase(email, limit=limit)
+            if items:
+                return items
+        except Exception:
+            pass
     items: List[dict] = []
     if not email or not os.path.exists(RESULTS_FILE):
         return items
@@ -500,18 +744,27 @@ async def index(request: Request):
     if user_email:
         ideas = load_recent_ideas(limit=50, owner_email=user_email)
     else:
-        # Show a small random sample of anonymous ideas to unsigned users
-        all_anon = load_filtered_ideas(anonymous_only=True)
-        try:
-            from random import sample as _sample
-            k = 5
-            ideas = _sample(all_anon, k) if len(all_anon) > k else all_anon
-        except Exception:
-            ideas = all_anon[:5]
+        # Prefer curated samples for guests; fallback to anonymous pool
+        ideas = load_curated_ideas(limit=5)
+        if not ideas:
+            all_anon = load_filtered_ideas(anonymous_only=True)
+            try:
+                from random import sample as _sample
+                k = 5
+                ideas = _sample(all_anon, k) if len(all_anon) > k else all_anon
+            except Exception:
+                # Fallback: use the last 5 to keep recency
+                ideas = all_anon[-5:]
     # Allow viewing a specific idea via query param
     qp_idea = request.query_params.get("idea")
     selected_uuid = qp_idea or get_selected_idea_uuid(user_email)
-    selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
+    selected_idea = None
+    if selected_uuid:
+        # If guest and curated contains the selection, load from curated
+        if not user_email:
+            selected_idea = load_curated_idea_by_uuid(selected_uuid)
+        if selected_idea is None:
+            selected_idea = load_idea_by_uuid(selected_uuid)
     # Enforce visibility scope for selected idea
     if selected_idea is not None:
         idea_owner = selected_idea.get("owner_email")
@@ -586,17 +839,27 @@ async def scrape(
     
     try:
         # Run the blocking pipeline off the event loop to avoid worker timeouts
+        # Build per-user dedupe set from Supabase/local before scraping
+        preexisting_ids = _fetch_user_seen_reddit_ids(user_email)
         results, report = await run_in_threadpool(
             run_pipeline,
             subreddit_list,
             posts_per_subreddit,
             comments_per_post,
+            # pass dedupe ids to the pipeline
+            skip_reddit_ids=preexisting_ids,
         )
-        # Persist full results locally for the dashboard
+        # Persist full results to Supabase; fall back to local file on failure
+        persisted = False
         try:
-            append_results_to_file(results, user_email)
+            persisted = insert_results_to_supabase(results, user_email)
         except Exception:
-            pass
+            persisted = False
+        if not persisted:
+            try:
+                append_results_to_file(results, user_email)
+            except Exception:
+                pass
         
         # Increment usage by the number of posts added (avoid counting duplicates or errors)
         posts_processed = 0
@@ -671,11 +934,17 @@ async def ideas_page(request: Request):
     if user_email:
         ideas = load_recent_ideas(limit=50, owner_email=user_email)
     else:
-        ideas = load_recent_ideas(limit=50, anonymous_only=True)
+        # Prefer curated for guests on the ideas page too
+        ideas = load_curated_ideas(limit=50) or load_recent_ideas(limit=50, anonymous_only=True)
     selected_uuid = request.query_params.get("idea")
     if not selected_uuid and ideas:
         selected_uuid = ideas[0].get("uuid")
-    selected_idea = load_idea_by_uuid(selected_uuid) if selected_uuid else None
+    selected_idea = None
+    if selected_uuid:
+        if not user_email:
+            selected_idea = load_curated_idea_by_uuid(selected_uuid)
+        if selected_idea is None:
+            selected_idea = load_idea_by_uuid(selected_uuid)
     # Enforce visibility scope for selected idea
     if selected_idea is not None:
         idea_owner = selected_idea.get("owner_email")
@@ -725,7 +994,8 @@ async def notify_interest(request: Request, email: str = Form(...)):
             k = 5
             ideas = _sample(all_anon, k) if len(all_anon) > k else all_anon
         except Exception:
-            ideas = all_anon[:5]
+            # Fallback: use the last 5 to keep recency
+            ideas = all_anon[-5:]
 
     qp_idea = request.query_params.get("idea")
     selected_uuid = qp_idea or get_selected_idea_uuid(user_email)

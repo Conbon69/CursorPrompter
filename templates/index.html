@@ -374,6 +374,11 @@
                     {% endif %}
                 </button>
             </div>
+            {% if not user_email %}
+            <div class="help-text" style="text-align:center; margin-top:8px;">
+                Verify your email at the top of this page to unlock 15 scrapes/day!
+            </div>
+            {% endif %}
             
         </form>
         
@@ -454,7 +459,7 @@
         
 
         <!-- Slim LaunchCtrl note + email capture -->
-        <div style="margin-top:16px; padding:12px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc;">
+        <div style="margin-top:16px; padding:12px; border:1px solid #FDE68A; border-radius:6px; background:#FFF8E1;">
             <div style="font-weight:600; color:#111827; margin:0 0 6px 0;">Note from Connor, the creator: Want to try the next phase?</div>
             <div style="color:#374151; font-size:14px; margin:0 0 10px 0;">Right now, this site just finds problems, and gives you prompts to build. I'm working to add automated web app creation and deployment next, so you can go from zero, to a working + deployed MVP that's ready to sell. Tag along below!</div>
             <form method="POST" action="/notify" style="display:flex; gap:8px; align-items:center;">
@@ -467,7 +472,7 @@
 
         <!-- Simple Ideas Dashboard -->
         <div style="margin: 24px 0 10px 0;">
-            <h3 style="margin: 0 0 10px 0;">Sample Ideas</h3>
+            <h3 style="margin: 0 0 10px 0; font-size: 20px;">{% if user_email %}My Ideas{% else %}Sample Ideas{% endif %}</h3>
             <!-- Quick chooser -->
             {% if ideas and ideas|length > 0 %}
             <form method="GET" action="/" style="margin: 0 0 12px 0; display:flex; gap:8px;">

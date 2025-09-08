@@ -27,7 +27,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional, Tuple
 
 import praw
 from dotenv import load_dotenv
@@ -263,16 +263,18 @@ def scrape_subreddit(name: str, post_limit: int, max_comments: int, already_seen
     return items
 
 # -------------------- 5. Main pipeline --------------------------------------
-from typing import Tuple
-
 def run_pipeline(
-    subs: List[str], post_lim: int, cmnt_lim: int, delay: float = 1.2
+    subs: List[str],
+    post_lim: int,
+    cmnt_lim: int,
+    delay: float = 1.2,
+    skip_reddit_ids: Optional[List[str]] = None,
 ) -> Tuple[List[dict], list]:
     results = []
     report = []
 
     # Load already seen IDs from scraper.db if it exists
-    seen_ids = set()
+    seen_ids = set(skip_reddit_ids or [])
     db_path = Path("scraper.db")
     if db_path.exists():
         import sqlite3
