@@ -121,7 +121,7 @@
                 <li>Save your favorite results</li>
             </ul>
             <p style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 4px; color: #1976d2;">
-                <strong>Note:</strong> Email verification is now configured! You'll receive a verification email, with a manual link as backup.
+                <strong>Note:</strong> Email verification is configured. You'll receive a verification email. The link expires in 10 minutes.
             </p>
         </div>
         
@@ -140,33 +140,7 @@
             {% endif %}
         </div>
         
-        {% if show_manual_link and verification_url %}
-        <div class="info-box">
-            <h3>🔗 Manual Verification Link</h3>
-            {% if email_error %}
-            <div class="error" style="margin-bottom: 15px;">
-                {{ email_error }}
-            </div>
-            {% elif email_info %}
-            <div class="success" style="margin-bottom: 15px;">
-                {{ email_info }}
-            </div>
-            {% else %}
-            <p><strong>Since email sending is not configured, please use this link to verify your email:</strong></p>
-            {% endif %}
-            <div class="verification-url">
-                <a href="{{ verification_url }}" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">
-                    🚀 Click to Verify Email
-                </a>
-            </div>
-            <p style="margin-top: 10px; font-size: 14px; color: #666;">
-                Or copy this URL: <code style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px;">{{ verification_url }}</code>
-            </p>
-            <p style="margin-top: 10px; font-size: 14px; color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">
-                ⚠️ This link will expire in 10 minutes!
-            </p>
-        </div>
-        {% endif %}
+        {# Manual verification link removed per product decision #}
         {% else %}
         <form method="POST" action="/verify">
             <div class="form-group">

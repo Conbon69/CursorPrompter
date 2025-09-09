@@ -128,11 +128,11 @@ Goal: Produce a paste-ready playbook for Cursor. For each step (0–6) below, ou
 Hard requirements:
 - Return JSON only in the shape: {{"prompts": ["...", "...", "..."]}}
 - Provide exactly 7 prompts (indices 0..6 correspond to the steps below)
-- Each prompt must be a complete instruction the developer can paste as-is
+- Each prompt must be a complete instruction the developer can paste as-is (except prompt 0, which must be a summary)
 - Each prompt should not include code, but instructions for Cursor to write the code
 
 ### Required sequence
-0) Context prompt – In ≤120 words, summarize the problem/opportunity, target market, and chosen MVP using the inputs below, then end with exactly: Respond 'Ready' if you understand and will wait for detailed tasks.
+0. Context prompt – Summarize the problem, target market, and proposed solution in one unlabeled paragraph (≤120 words); use only the inputs provided; no headings, bullets, or code; end with exactly: "Respond 'Ready' if you understand and will wait for detailed tasks."
 1) Project bootstrap – Initialize repo and minimal stack; give shell commands and expected files; keep stack tiny (Python 3.11 + FastAPI + SQLite OR Node 20 + Express + SQLite); include run commands.
 2) Data model & schema – Only if persistence is truly required; otherwise state that no DB is needed. If needed, use a single-file SQLite DB or a single JSON file with one table/collection and a tiny seed.
 3) Core backend logic & endpoints – Implement exactly the 1–3 MVP features; provide clear validation and error handling; include curl examples with expected responses; include unit-test stubs.
@@ -273,7 +273,8 @@ def run_pipeline(
     results = []
     report = []
 
-    # Load already seen IDs from scraper.db if it exists
+    # Load already seen IDs from scraper.db if it exists.
+    # Merge with per-user skip_reddit_ids from the web app (do not overwrite).
     seen_ids = set(skip_reddit_ids or [])
     db_path = Path("scraper.db")
     if db_path.exists():
@@ -282,10 +283,11 @@ def run_pipeline(
         cur = conn.cursor()
         try:
             cur.execute("SELECT post_id FROM scraped_posts")
-            seen_ids = {row[0] for row in cur.fetchall()}
+            fetched_ids = {row[0] for row in cur.fetchall()}
+            seen_ids = seen_ids.union(fetched_ids)
         except Exception:
-            # table may not exist yet
-            seen_ids = set()
+            # table may not exist yet; keep existing seen_ids
+            pass
         conn.close()
 
     # Prepare a writer connection to persist newly processed post IDs

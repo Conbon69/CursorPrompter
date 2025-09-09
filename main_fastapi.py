@@ -1128,36 +1128,27 @@ async def verify_email(
             email_sent = send_verification_email_fastapi(email, token, str(request.base_url))
             
             if email_sent:
-                # Determine if we're using the Resend sandbox sender
+                # On success, do not show manual link or error. For sandbox sender,
+                # still present a clean success message without a fallback link.
                 from_email = os.getenv("RESEND_FROM_EMAIL", "Acme <onboarding@resend.dev>")
                 is_development = "onboarding@resend.dev" in from_email
-                
-                if is_development:
-                    # Sandbox sender may have delivery restrictions; also show manual link as fallback
-                    return templates.TemplateResponse("verify.html", {
-                        "request": request,
-                        "success": f"✅ Verification email attempted to {email}.",
-                        "verification_url": verification_url,
-                        "email": email,
-                        "show_manual_link": True,
-                        "email_info": "ℹ️ Using Resend sandbox sender. If the email doesn't arrive, use the link below or configure RESEND_FROM_EMAIL with a verified domain."
-                    })
-                else:
-                    return templates.TemplateResponse("verify.html", {
-                        "request": request,
-                        "success": f"✅ Verification email sent to {email}! Check your inbox and click the verification link.",
-                        "email": email,
-                        "show_manual_link": False
-                    })
-            else:
-                # Fallback to manual link if email sending fails
+                msg = (
+                    f"✅ Verification email sent to {email}! Check your inbox and click the verification link."
+                    if not is_development
+                    else f"✅ Verification email sent to {email}!"
+                )
                 return templates.TemplateResponse("verify.html", {
                     "request": request,
-                    "success": f"✅ Verification record created successfully!",
-                    "verification_url": verification_url,
+                    "success": msg,
                     "email": email,
-                    "show_manual_link": True,
-                    "email_error": "Email sending failed, but you can use the manual link below."
+                    "show_manual_link": False
+                })
+            else:
+                # Email sending failed. Do not render a manual link.
+                return templates.TemplateResponse("verify.html", {
+                    "request": request,
+                    "error": "We couldn't send the email right now. Please try again in a moment.",
+                    "email": email
                 })
         else:
             return templates.TemplateResponse("verify.html", {
