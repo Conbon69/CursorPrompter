@@ -195,13 +195,30 @@ def send_verification_email_fastapi(email: str, token: str, app_url: str) -> boo
             """
         })
         print(f"📊 Resend response: {response}")
-        
-        if hasattr(response, 'id') and response.id:
+
+        # Be tolerant of different response shapes (dict, pydantic model, simple obj)
+        success = False
+        try:
+            if isinstance(response, dict):
+                success = bool(response.get("id"))
+            else:
+                rid = getattr(response, "id", None)
+                if not rid and hasattr(response, "model_dump"):
+                    try:
+                        rid = (response.model_dump() or {}).get("id")
+                    except Exception:
+                        rid = None
+                if not rid and hasattr(response, "__dict__"):
+                    rid = response.__dict__.get("id")
+                success = bool(rid)
+        except Exception:
+            success = False
+
+        if success:
             print(f"✅ Email sent successfully to {email}")
             return True
-        else:
-            print(f"❌ Failed to send email to {email}")
-            return False
+        print(f"❌ Failed to confidently detect success for email to {email}")
+        return False
             
     except ImportError:
         print("❌ Resend not installed. Run: pip install resend")
