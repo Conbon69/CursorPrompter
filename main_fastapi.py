@@ -13,6 +13,7 @@ import secrets
 from dotenv import load_dotenv
 from starlette.concurrency import run_in_threadpool
 from urllib.parse import quote_plus
+import base64, logging
 
 # Load environment variables from .env file
 load_dotenv()
@@ -1058,16 +1059,47 @@ async def feedback_submit(
         "email_value": final_email or "",
     })
 
+def _decode_jwt_payload(token: str):
+    """Return dict payload or {}. Handles base64url padding."""
+    if not token:
+        return {}
+    try:
+        p = token.split(".")[1]
+        p += "=" * (-len(p) % 4)  # fix padding
+        return json.loads(base64.urlsafe_b64decode(p).decode("utf-8"))
+    except Exception as e:
+        logging.info(f"[ideas] bad jwt: {e}")
+        return {}
+
+
 @app.get("/api/ideas", response_class=JSONResponse)
 async def api_get_ideas(request: Request):
     """Return the authenticated user's ideas as a simple list.
 
     Schema: [{ id, title, subreddit, problem_text, idea_summary, mvp_phases, prompts }]
     """
+        # --- DEBUG START ---
+    raw_auth = request.headers.get("authorization") or ""
+    bearer = raw_auth[7:] if raw_auth.lower().startswith("bearer ") else None
+    cookie_jwt = request.cookies.get("user_session")
+
+    # decode whichever token we have (bearer wins, else cookie)
+    token = bearer or cookie_jwt or ""
+    payload = _decode_jwt_payload(token)
+    email  = payload.get("email")
+    sub    = payload.get("sub")
+
+    logging.info(f"[ideas] host={request.url.hostname} hasCookie={bool(cookie_jwt)} hasBearer={bool(bearer)}")
+    logging.info(f"[ideas] jwt.email={email} jwt.sub={sub}")
+    logging.info(f"[ideas] SBURL={(os.getenv('SUPABASE_URL',''))[:32]} KEY={(os.getenv('SUPABASE_ANON_KEY',''))[:8]}")
+    # --- DEBUG END ---
+
     user_email = get_user_email_from_request(request)
+    logging.info(f"[ideas] derived user_email={user_email!r}")
     if not user_email:
         raise HTTPException(status_code=401, detail="Unauthorized")
     data = load_user_ideas(user_email, limit=50)
+    logging.info(f"[ideas] resultCount={len(data) if isinstance(data, list) else 'n/a'}")
     return JSONResponse(content=data)
 
 @app.patch("/api/ideas/{idea_id}/status", response_class=JSONResponse)
