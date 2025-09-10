@@ -657,17 +657,42 @@ def load_idea_by_uuid(idea_uuid: str) -> Optional[dict]:
 
 def load_user_ideas(email: str, limit: int = 50) -> List[dict]:
     """Load recent ideas for a specific owner (scoped to authenticated user)."""
-    logging.info(f"[load_user_ideas] filtering by user_id == {email!r}, limit={limit}")  # TODO: ensure filter matches user_id=email consistently
+    import logging
+    user_email = email
+    logging.info(f"[load_user_ideas] filtering by user_id == {user_email!r}, limit={limit}")
+
     # Prefer Supabase if configured
-    if sb_results:
+    if sb_results and user_email:
         try:
-            items = load_user_ideas_supabase(email, limit=limit)
-            if items:
-                return items
+            resp = (
+                sb_results
+                .table("scraped_results")
+                .select("uuid,scraped_at,subreddit,reddit_url,reddit_title,analysis,solution,cursor_playbook,user_id")
+                .eq("user_id", user_email)
+                .order("scraped_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            rows = resp.data or []
+            logging.info(f"[load_user_ideas] rows={len(rows)}")
+            items: List[dict] = []
+            for row in rows:
+                items.append({
+                    "id": row.get("uuid"),
+                    "title": row.get("reddit_title"),
+                    "subreddit": row.get("subreddit"),
+                    "problem_text": (row.get("analysis") or {}).get("problem_description") or (row.get("analysis") or {}).get("opportunity_description") or "",
+                    "idea_summary": (row.get("solution") or {}).get("solution_description", ""),
+                    "mvp_phases": (row.get("solution") or {}).get("mvp_features", []),
+                    "prompts": row.get("cursor_playbook") or [],
+                })
+            return items
         except Exception:
             pass
+
+    # Fallback to local file if Supabase unavailable or on error
     items: List[dict] = []
-    if not email or not os.path.exists(RESULTS_FILE):
+    if not user_email or not os.path.exists(RESULTS_FILE):
         return items
     try:
         with open(RESULTS_FILE, "r", encoding="utf-8") as f:
@@ -679,7 +704,7 @@ def load_user_ideas(email: str, limit: int = 50) -> List[dict]:
                     obj = json.loads(line)
                 except Exception:
                     continue
-                if obj.get("owner_email") != email:
+                if obj.get("owner_email") != user_email:
                     continue
                 meta = obj.get("meta", {})
                 reddit = obj.get("reddit", {})
@@ -691,10 +716,10 @@ def load_user_ideas(email: str, limit: int = 50) -> List[dict]:
                     "subreddit": reddit.get("subreddit"),
                     "problem_text": analysis.get("problem_description") or analysis.get("opportunity_description") or "",
                     "idea_summary": solution.get("solution_description", ""),
-                    "mvp_phases": solution.get("mvp_features", []),  # mapped from features
+                    "mvp_phases": solution.get("mvp_features", []),
                     "prompts": obj.get("cursor_playbook", []),
                 })
-        # Return newest first by uuid time proxy (or just reverse read order)
+        # Return newest first by file order proxy
         items = items[-limit:]
         items.reverse()
         return items
