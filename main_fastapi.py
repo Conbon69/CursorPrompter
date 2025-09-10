@@ -13,7 +13,8 @@ import secrets
 from dotenv import load_dotenv
 from starlette.concurrency import run_in_threadpool
 from urllib.parse import quote_plus
-import base64, logging
+import base64
+import logging
 
 # Load environment variables from .env file
 load_dotenv()
@@ -166,8 +167,26 @@ def verify_session_token(token: str) -> Optional[str]:
     except jwt.InvalidTokenError:
         return None
 
+def _decode_jwt_payload(token: str):
+    """Return dict payload or {}. Handles base64url padding."""
+    if not token:
+        return {}
+    try:
+        p = token.split(".")[1]
+        p += "=" * (-len(p) % 4)  # fix padding
+        return json.loads(base64.urlsafe_b64decode(p).decode("utf-8"))
+    except Exception as e:
+        logging.info(f"[ideas] bad jwt: {e}")
+        return {}
+
 def get_user_email_from_request(request: Request) -> Optional[str]:
     """Get user email from session token in cookies"""
+    raw_auth = request.headers.get("authorization") or ""
+    bearer = raw_auth[7:] if raw_auth.lower().startswith("bearer ") else None
+    cookie_jwt = request.cookies.get("user_session") or request.cookies.get("sb-access-token") or request.cookies.get("sb:token")
+    logging.info(f"[get_user_email] hasCookie={bool(cookie_jwt)} hasBearer={bool(bearer)}")
+    payload = _decode_jwt_payload(bearer or cookie_jwt or "")
+    logging.info(f"[get_user_email] payload_keys={list(payload.keys())}")
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if session_token:
         return verify_session_token(session_token)
@@ -468,6 +487,7 @@ def load_idea_by_uuid_supabase(idea_uuid: str) -> Optional[dict]:
         return None
 
 def load_user_ideas_supabase(email: str, limit: int = 50) -> List[dict]:
+    logging.info(f"[load_user_ideas] filtering by user_id == {email!r}, limit={limit}")
     if not sb_results or not email:
         return []
     try:
@@ -637,6 +657,7 @@ def load_idea_by_uuid(idea_uuid: str) -> Optional[dict]:
 
 def load_user_ideas(email: str, limit: int = 50) -> List[dict]:
     """Load recent ideas for a specific owner (scoped to authenticated user)."""
+    logging.info(f"[load_user_ideas] filtering by user_id == {email!r}, limit={limit}")  # TODO: ensure filter matches user_id=email consistently
     # Prefer Supabase if configured
     if sb_results:
         try:
@@ -1078,24 +1099,40 @@ async def api_get_ideas(request: Request):
 
     Schema: [{ id, title, subreddit, problem_text, idea_summary, mvp_phases, prompts }]
     """
-        # --- DEBUG START ---
-    raw_auth = request.headers.get("authorization") or ""
-    bearer = raw_auth[7:] if raw_auth.lower().startswith("bearer ") else None
-    cookie_jwt = request.cookies.get("user_session")
+    # --- DEBUG MODE: return diagnostics when ?debug=1 ---
+    if request.query_params.get("debug") == "1":
+        raw_auth = request.headers.get("authorization") or ""
+        bearer = raw_auth[7:] if raw_auth.lower().startswith("bearer ") else None
 
-    # decode whichever token we have (bearer wins, else cookie)
-    token = bearer or cookie_jwt or ""
-    payload = _decode_jwt_payload(token)
-    email  = payload.get("email")
-    sub    = payload.get("sub")
+        # try common cookie names (keep our existing cookie name too)
+        cookie_jwt = (
+            request.cookies.get("user_session")
+            or request.cookies.get("sb-access-token")
+            or request.cookies.get("sb:token")
+            or request.cookies.get("sb_session")  # only if present in this codebase
+        )
 
-    logging.info(f"[ideas] host={request.url.hostname} hasCookie={bool(cookie_jwt)} hasBearer={bool(bearer)}")
-    logging.info(f"[ideas] jwt.email={email} jwt.sub={sub}")
-    logging.info(f"[ideas] SBURL={(os.getenv('SUPABASE_URL',''))[:32]} KEY={(os.getenv('SUPABASE_ANON_KEY',''))[:8]}")
-    # --- DEBUG END ---
+        token = bearer or cookie_jwt or ""
+        payload = _decode_jwt_payload(token)
+        email = payload.get("email")
+        sub   = payload.get("sub")
 
+        return JSONResponse({
+            "_reached": True,
+            "hasCookie": bool(cookie_jwt),
+            "hasBearer": bool(bearer),
+            "hasCookieHeader": bool(request.headers.get("cookie")),
+            "email": email,
+            "sub": sub,
+            "env": {
+                "SBURL": (os.getenv("SUPABASE_URL") or "")[:32],
+                "KEY": (os.getenv("SUPABASE_ANON_KEY") or "")[:8]
+            }
+        })
+
+    logging.info(f"[ideas] host={request.url.hostname} cookieHeader={bool(request.headers.get('cookie'))}")
     user_email = get_user_email_from_request(request)
-    logging.info(f"[ideas] derived user_email={user_email!r}")
+    logging.info(f"[ideas] derived user_email={user_email!r} SBURL={(os.getenv('SUPABASE_URL',''))[:32]} KEY={(os.getenv('SUPABASE_ANON_KEY',''))[:8]}")
     if not user_email:
         raise HTTPException(status_code=401, detail="Unauthorized")
     data = load_user_ideas(user_email, limit=50)
