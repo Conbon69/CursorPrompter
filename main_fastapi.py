@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from urllib.parse import quote_plus
 import base64
 import logging
+import stripe
 
 # Load environment variables from .env file
 load_dotenv()
@@ -47,8 +48,19 @@ print("🔍 Trying explicit .env loading...")
 load_dotenv('.env', override=True)
 print(f"After explicit load - RESEND_API_KEY: {'✅ Set' if os.getenv('RESEND_API_KEY') else '❌ Still not set'}")
 
+# Stripe configuration
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PRICE_STARTER = os.getenv("STRIPE_PRICE_STARTER")  # price_...
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PORTAL_RETURN_URL = os.getenv("STRIPE_PORTAL_RETURN_URL")
+if STRIPE_SECRET_KEY:
+    try:
+        stripe.api_key = STRIPE_SECRET_KEY
+    except Exception:
+        pass
+
 # Import the existing pipeline and auth systems
-from main import run_pipeline, get_reddit_client
+from main import run_pipeline, get_reddit_client, run_manual_idea_pipeline
 
 # Email verification functions are now imported from fastapi_email_verification.py
 
@@ -69,7 +81,14 @@ from db_helpers import (
     mark_post_scraped_new, 
     is_post_already_scraped_new
 )
-from fastapi_db_helpers import get_daily_usage_safe, increment_daily_usage_safe, increment_daily_usage_by_safe
+from fastapi_db_helpers import (
+    get_daily_usage_safe,
+    increment_daily_usage_safe,
+    increment_daily_usage_by_safe,
+    get_monthly_usage_safe,
+    get_user_plan,
+    get_plan_monthly_limit,
+)
 
 app = FastAPI(title="LaunchCtrl", version="1.0.0")
 
@@ -113,8 +132,8 @@ def pretty_date(value: Optional[str]) -> str:
 templates.env.filters["pretty_date"] = pretty_date
 
 # Quota management
-FREE_LIMIT = 2
-VERIFIED_LIMIT = 15
+FREE_LIMIT = 0  # Guests cannot scrape
+VERIFIED_MONTHLY_LIMIT = 30  # default for free plan; starter overrides via plan lookup
 
 # Session management
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
@@ -127,6 +146,9 @@ SELECTION_FILE = "selected_ideas.json"
 SAVED_FILE = "saved_ideas.json"
 FEEDBACK_FILE = "feedback.jsonl"
 CURATED_FILE = "curated_samples.json"
+
+# Feature flags
+FEATURE_MANUAL_IDEAS = (os.getenv("FEATURE_MANUAL_IDEAS", "0").lower() in ("1","true","yes","on"))
 
 # Supabase client for feedback (separate from quota helpers; falls back if unset)
 try:
@@ -303,6 +325,41 @@ def store_feedback(message: str, *, email: Optional[str], path: Optional[str], u
         else:
             _append_feedback_to_file(payload)
             return True
+    except Exception:
+        return False
+
+def store_upgrade_interest(*, email: Optional[str], path: Optional[str], user_agent: Optional[str]) -> bool:
+    """Store upgrade interest in Supabase upgrade_interests table; fallback to file.
+
+    This avoids hitting Stripe during early access. RLS is disabled on the table, so anon key is sufficient.
+    """
+    try:
+        em = (email or "").strip()[:320] if email else None
+        p = (path or "").strip()[:512] if path else None
+        ua = (user_agent or "").strip()[:512] if user_agent else None
+
+        # Insert into Supabase when available
+        if sb_feedback:
+            try:
+                sb_feedback.table("upgrade_interests").insert({
+                    "email": em,
+                    "path": p,
+                    "user_agent": ua,
+                    "created_at": datetime.utcnow().isoformat(),
+                }).execute()
+                return True
+            except Exception:
+                pass
+
+        # Fallback: append to feedback file with a message tag
+        _append_feedback_to_file({
+            "message": "upgrade_interest",
+            "email": em,
+            "path": p,
+            "user_agent": ua,
+            "created_at": datetime.utcnow().isoformat(),
+        })
+        return True
     except Exception:
         return False
 
@@ -735,20 +792,13 @@ def increment_daily_usage(email: Optional[str]):
     return increment_daily_usage_safe(email)
 
 def can_user_scrape(email: Optional[str]) -> tuple[bool, int, int]:
-    """Check if user can scrape and return current usage and limit"""
-    if not email:
-        # Anonymous user
-        current_usage = get_daily_usage(None)
-        return current_usage < FREE_LIMIT, current_usage, FREE_LIMIT
-    
-    # Check if user is verified
-    if is_email_verified(email):
-        current_usage = get_daily_usage(email)
-        return current_usage < VERIFIED_LIMIT, current_usage, VERIFIED_LIMIT
-    else:
-        # Unverified user gets free limit
-        current_usage = get_daily_usage(email)
-        return current_usage < FREE_LIMIT, current_usage, FREE_LIMIT
+    """Return (can_scrape, current_monthly_usage, monthly_limit). Verified users only."""
+    if not email or not is_email_verified(email):
+        return False, 0, 0
+    plan = get_user_plan(email)
+    limit = get_plan_monthly_limit(plan)
+    current_month = get_monthly_usage_safe(email)
+    return current_month < limit, current_month, limit
 
 def _check_subreddit_valid(name: str) -> tuple[bool, str]:
     """Return (is_valid, reason). Uses Reddit API; no local list required.
@@ -834,10 +884,12 @@ async def index(request: Request):
         "current_usage": current_usage,
         "limit": limit,
         "is_verified": is_email_verified(user_email) if user_email else False,
+        "plan": get_user_plan(user_email) if user_email else 'free',
         "ideas": ideas,
         "selected_idea_uuid": selected_uuid,
         "selected_idea": selected_idea,
-        "error": qp_error
+        "error": qp_error,
+        "feature_manual_ideas": FEATURE_MANUAL_IDEAS,
     })
 
 @app.post("/scrape", response_class=HTMLResponse)
@@ -850,6 +902,20 @@ async def scrape(
     """Run the scraping pipeline and display results with quota check"""
     
     user_email = get_user_email_from_request(request)
+
+    # Enforce: only verified users may scrape
+    if not user_email or not is_email_verified(user_email):
+        return RedirectResponse(url="/verify", status_code=302)
+
+    # Enforce per-run caps server-side
+    try:
+        posts_per_subreddit = max(1, min(int(posts_per_subreddit), 5))
+    except Exception:
+        posts_per_subreddit = 1
+    try:
+        comments_per_post = max(1, min(int(comments_per_post), 40))
+    except Exception:
+        comments_per_post = 10
     can_scrape, current_usage, limit = can_user_scrape(user_email)
     
     if not can_scrape:
@@ -918,9 +984,9 @@ async def scrape(
                 except Exception:
                     continue
         try:
+            # Keep using daily counter backend, but monthly reads will sum it
             increment_daily_usage_by_safe(user_email, posts_processed)
         except Exception:
-            # Fallback to +1 if bulk increment fails
             increment_daily_usage_safe(user_email)
         
         # Prepare results for template
@@ -1012,6 +1078,7 @@ async def ideas_page(request: Request):
         "current_usage": current_usage,
         "limit": limit,
         "is_verified": is_email_verified(user_email) if user_email else False,
+        "plan": get_user_plan(user_email) if user_email else 'free',
         "ideas": ideas,
         "selected_idea_uuid": selected_uuid,
         "selected_idea": selected_idea,
@@ -1065,6 +1132,7 @@ async def notify_interest(request: Request, email: str = Form(...)):
         "current_usage": current_usage,
         "limit": limit,
         "is_verified": is_email_verified(user_email) if user_email else False,
+        "plan": get_user_plan(user_email) if user_email else 'free',
         "ideas": ideas,
         "selected_idea_uuid": selected_uuid,
         "selected_idea": selected_idea,
@@ -1103,6 +1171,100 @@ async def feedback_submit(
         "error": None if ok else "Sorry, we couldn't record your feedback. Please try again.",
         "message": message,
         "email_value": final_email or "",
+    })
+
+@app.post("/idea/manual", response_class=HTMLResponse)
+async def manual_idea_submit(
+    request: Request,
+    manual_idea: str = Form(...),
+):
+    """Accept a manually described idea and generate the same analysis/solution/playbook.
+
+    Requires verified sign-in and is gated by the FEATURE_MANUAL_IDEAS flag.
+    """
+    email = get_user_email_from_request(request)
+    if not email or not is_email_verified(email):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not FEATURE_MANUAL_IDEAS:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Enforce usage limits
+    can_scrape, current_usage, limit = can_user_scrape(email)
+    if not can_scrape:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "user_email": email,
+            "can_scrape": False,
+            "current_usage": current_usage,
+            "limit": limit,
+            "is_verified": is_email_verified(email),
+            "plan": get_user_plan(email),
+            "ideas": load_recent_ideas(limit=50, owner_email=email),
+            "selected_idea_uuid": None,
+            "selected_idea": None,
+            "error": f"Monthly quota exceeded! You've used {current_usage}/{limit} this month.",
+            "feature_manual_ideas": FEATURE_MANUAL_IDEAS,
+        })
+
+    # Generate using the manual pipeline off the event loop
+    try:
+        results, report = await run_in_threadpool(run_manual_idea_pipeline, manual_idea)
+    except Exception as e:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "user_email": email,
+            "can_scrape": can_scrape,
+            "current_usage": current_usage,
+            "limit": limit,
+            "is_verified": is_email_verified(email),
+            "plan": get_user_plan(email),
+            "ideas": load_recent_ideas(limit=50, owner_email=email),
+            "selected_idea_uuid": None,
+            "selected_idea": None,
+            "error": f"Error generating plan: {str(e)}",
+            "feature_manual_ideas": FEATURE_MANUAL_IDEAS,
+        })
+
+    # Persist results to Supabase; fallback to local file
+    persisted = False
+    try:
+        persisted = insert_results_to_supabase(results, email)
+    except Exception:
+        persisted = False
+    if not persisted:
+        try:
+            append_results_to_file(results, email)
+        except Exception:
+            pass
+
+    # Increment usage by 1 for this generated plan
+    try:
+        increment_daily_usage_by_safe(email, 1)
+    except Exception:
+        increment_daily_usage_safe(email)
+
+    # Prepare and render results using the existing template
+    formatted_results = []
+    for result in results:
+        formatted_results.append({
+            "title": (result.get("reddit") or {}).get("title"),
+            "url": (result.get("reddit") or {}).get("url"),
+            "subreddit": (result.get("reddit") or {}).get("subreddit"),
+            "analysis": result.get("analysis"),
+            "solution": result.get("solution"),
+            "playbook_prompts": result.get("cursor_playbook"),
+            "created_at": (result.get("meta") or {}).get("scraped_at"),
+        })
+
+    return templates.TemplateResponse("results.html", {
+        "request": request,
+        "results": formatted_results,
+        "report": report,
+        "subreddits": ["manual"],
+        "posts_per_subreddit": 1,
+        "comments_per_post": 0,
+        "user_email": email,
+        "current_usage": current_usage + 1,
+        "limit": limit,
     })
 
 def _decode_jwt_payload(token: str):
@@ -1410,6 +1572,127 @@ async def debug_email(request: Request):
             "verification_url_example": verification_url_example,
         },
     }
+
+@app.post("/billing/checkout", response_class=JSONResponse)
+async def billing_checkout(request: Request):
+    """Record upgrade interest and return ok. Requires verified sign-in."""
+    try:
+        email = get_user_email_from_request(request)
+        if not email or not is_email_verified(email):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        ua = request.headers.get("user-agent")
+        store_upgrade_interest(email=email, path=str(request.base_url) + "billing/checkout", user_agent=ua)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unable to record interest")
+
+@app.post("/billing/portal", response_class=JSONResponse)
+async def billing_portal(request: Request):
+    """Create a Stripe Billing Portal session for the signed-in user."""
+    try:
+        if not STRIPE_SECRET_KEY:
+            raise HTTPException(status_code=503, detail="Billing not configured")
+        email = get_user_email_from_request(request)
+        if not email or not is_email_verified(email):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        # Find or create customer by email
+        customers = stripe.Customer.list(email=email, limit=1)
+        if customers.data:
+            customer_id = customers.data[0].id
+        else:
+            c = stripe.Customer.create(email=email, metadata={"app_email": email})
+            customer_id = c.id
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=STRIPE_PORTAL_RETURN_URL or str(request.base_url),
+        )
+        return {"url": session.url}
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unable to start portal")
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhooks to upsert subscription records in Supabase."""
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature")
+    if not STRIPE_WEBHOOK_SECRET:
+        # Ignore if not configured
+        return JSONResponse({"received": True})
+    try:
+        event = stripe.Webhook.construct_event(
+            payload=payload, sig_header=sig, secret=STRIPE_WEBHOOK_SECRET
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    etype = event.get("type")
+    data = event.get("data", {}).get("object", {})
+
+    # Resolve email and subscription data
+    def upsert(email: str, customer_id: str, plan: str, status: str, period_end_ts: int | None):
+        try:
+            from supabase import create_client as _create_client
+            _url = os.getenv("SUPABASE_URL")
+            _key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+            if not (_url and _key):
+                return
+            sb = _create_client(_url, _key)
+            period_end_iso = None
+            if period_end_ts:
+                try:
+                    period_end_iso = datetime.utcfromtimestamp(int(period_end_ts)).isoformat()
+                except Exception:
+                    period_end_iso = None
+            row = {
+                "email": email,
+                "customer_id": customer_id,
+                "plan": plan,
+                "status": status,
+                "current_period_end": period_end_iso,
+            }
+            try:
+                sb.table("subscriptions").upsert(row, on_conflict="email").execute()
+            except Exception:
+                sb.table("subscriptions").insert(row).execute()
+        except Exception:
+            pass
+
+    try:
+        if etype == "checkout.session.completed":
+            email = (data.get("customer_details") or {}).get("email") or (data.get("customer_email"))
+            customer_id = data.get("customer")
+            subscription_id = data.get("subscription")
+            sub = stripe.Subscription.retrieve(subscription_id) if subscription_id else None
+            status = (sub.status if sub else "active")
+            period_end = (sub.current_period_end if sub else None)
+            upsert(email, customer_id, "starter", status, period_end)
+        elif etype in ("customer.subscription.created", "customer.subscription.updated"):
+            sub = data
+            customer_id = sub.get("customer")
+            status = sub.get("status")
+            period_end = sub.get("current_period_end")
+            # Lookup email from customer
+            cust = stripe.Customer.retrieve(customer_id) if customer_id else None
+            email = (cust.email if cust else None)
+            upsert(email, customer_id, "starter", status, period_end)
+        elif etype == "customer.subscription.deleted":
+            sub = data
+            customer_id = sub.get("customer")
+            period_end = sub.get("current_period_end")
+            cust = stripe.Customer.retrieve(customer_id) if customer_id else None
+            email = (cust.email if cust else None)
+            upsert(email, customer_id, "free", "canceled", period_end)
+    except Exception:
+        # swallow errors to avoid retries storms; check logs in Stripe dashboard
+        pass
+
+    return JSONResponse({"received": True})
 
 if __name__ == "__main__":
     print("🚀 Starting FastAPI server...")

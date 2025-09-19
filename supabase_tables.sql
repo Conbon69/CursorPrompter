@@ -41,3 +41,53 @@ ALTER TABLE scraped_posts DISABLE ROW LEVEL SECURITY;
 
 -- Optional: Set up a cron job to clean up expired verifications every hour
 -- SELECT cron.schedule('cleanup-expired-verifications', '0 * * * *', 'SELECT cleanup_expired_verifications();'); 
+
+-- Billing: subscriptions table (RLS-enabled)
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    plan TEXT NOT NULL CHECK (plan IN ('free','starter')),
+    status TEXT NOT NULL,
+    current_period_end TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_email ON subscriptions(email);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions(customer_id);
+
+-- Basic RLS policies: users can read their own record by email; service role can write
+DROP POLICY IF EXISTS subscriptions_read_own ON subscriptions;
+CREATE POLICY subscriptions_read_own ON subscriptions
+FOR SELECT USING (auth.jwt() ->> 'email' = email);
+
+-- Update updated_at on write
+CREATE OR REPLACE FUNCTION update_subscriptions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_update_subscriptions_updated_at ON subscriptions;
+CREATE TRIGGER trg_update_subscriptions_updated_at
+BEFORE UPDATE ON subscriptions
+FOR EACH ROW
+EXECUTE FUNCTION update_subscriptions_updated_at();
+
+-- Upgrade interest leads (no-RLS, server writes only)
+CREATE TABLE IF NOT EXISTS upgrade_interests (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email TEXT,
+    path TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE upgrade_interests DISABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_upgrade_interests_email ON upgrade_interests(email);

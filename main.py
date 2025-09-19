@@ -244,7 +244,7 @@ def scrape_subreddit(name: str, post_limit: int, max_comments: int, already_seen
     items = []
     seen = set(already_seen_ids or [])
     reddit_client = get_reddit_client()
-    for submission in reddit_client.subreddit(name).new(limit=batch_size):
+    for submission in reddit_client.subreddit(name).top(time_filter="week", limit=batch_size):
         if submission.id in seen:
             continue
         submission.comments.replace_more(limit=0)
@@ -421,6 +421,75 @@ def run_pipeline(
     except Exception:
         pass
     return results, report
+
+# -------------------- 5b. Manual idea pipeline -------------------------------
+def run_manual_idea_pipeline(idea_text: str) -> Tuple[List[dict], list]:
+    """Generate analysis, solution, and Cursor playbook from a manually provided idea.
+
+    Returns (results, report) with the same shape as run_pipeline so the web app can
+    persist and render without any special-casing.
+    """
+    idea = (idea_text or "").strip()
+    if not idea:
+        return [], [{"title": "Manual idea", "url": None, "status": "Error", "details": "Empty idea"}]
+
+    # Derive a compact title from the first sentence/line
+    try:
+        first_line = idea.splitlines()[0].strip()
+    except Exception:
+        first_line = idea[:120]
+    title = (first_line[:120] or "Manual Idea").rstrip()
+
+    report = {"title": title, "url": None, "status": "", "details": ""}
+
+    # Treat the provided text as the full context
+    full_text = idea if len(idea) <= 400000 else idea[:400000]
+
+    # 1) Viability analysis – for manual entries, we still run analysis for structure,
+    # but we do not reject non-viable; we proceed to generate solution/playbook anyway.
+    analysis = oai_json(ANALYSIS_PROMPT.format(content=full_text)) or {}
+
+    # 2) MVP solution – prefer problem/opportunity description when available
+    problem_desc = (
+        analysis.get("problem_description")
+        or analysis.get("opportunity_description")
+        or title
+    )
+    sol = oai_json(
+        SOLUTION_PROMPT.format(
+            problem=problem_desc,
+            market=analysis.get("target_market", ""),
+            context=full_text,
+        )
+    ) or {}
+
+    # 3) Cursor playbook
+    playbook = oai_json(
+        CURSOR_PLAYBOOK_PROMPT.format(
+            problem=problem_desc,
+            market=analysis.get("target_market", ""),
+            solution=sol.get("solution_description", ""),
+        )
+    ) or {}
+
+    result = {
+        "meta": {
+            "uuid": str(uuid.uuid4()),
+            "scraped_at": datetime.utcnow().isoformat(),
+        },
+        "reddit": {
+            "subreddit": "manual",
+            "url": None,
+            "title": title,
+            "id": None,
+        },
+        "analysis": analysis,
+        "solution": sol,
+        "cursor_playbook": playbook.get("prompts", []),
+    }
+    report["status"] = "Added"
+    report["details"] = problem_desc
+    return [result], [report]
 
 # -------------------- 6. CLI entrypoint -------------------------------------
 def main():

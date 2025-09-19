@@ -35,6 +35,8 @@
         .btn-row { display:flex; justify-content:center; gap:12px; align-items:center; margin: 6px 0 8px 0; }
         .btn-secondary { background: transparent; color:#111827; border:1px solid #e5e7eb; padding: 12px 22px; border-radius: 6px; font-size: 16px; text-decoration:none; cursor:pointer; }
         .btn-secondary:hover { background:#f3f4f6; }
+        .btn-primary { background:#007bff; color:#fff; border:none; padding:12px 30px; border-radius:6px; font-size:16px; text-decoration:none; display:inline-block; }
+        .btn-primary:hover { background:#0056b3; }
         .chips { text-align:center; font-size: 13px; color:#6b7280; margin-bottom: 18px; }
         .limits-panel { background:#f8f9fa; border:1px solid #e5e7eb; border-radius:6px; padding:12px; color:#374151; }
         .limits-title { font-weight:600; margin:0 0 4px 0; }
@@ -286,6 +288,15 @@
                 <span>You’re signed in as {{ user_email }}</span>
                 <span class="sep">·</span>
                 <a href="/logout">Logout</a>
+                <span class="sep">·</span>
+                <span>Plan: {{ plan|default('free')|capitalize }}</span>
+                {% if plan != 'starter' %}
+                    <span class="sep">·</span>
+                    <a href="#" id="upgradeLink">Upgrade</a>
+                {% else %}
+                    <span class="sep">·</span>
+                    <a href="#" id="portalLink">Manage billing</a>
+                {% endif %}
             {% else %}
                 <span>You’re browsing as a guest.</span>
                 <span class="sep">·</span>
@@ -294,7 +305,7 @@
                 <a href="/signin">Sign in</a>
             {% endif %}
             <span class="sep">·</span>
-            <span><strong>Usage:</strong> {{ current_usage }}/{{ limit }} today</span>
+            <span><strong>Usage:</strong> {{ current_usage }}/{{ limit }} this month</span>
             <span class="sep">·</span>
             <a href="/feedback?from=/">Feedback</a>
         </div>
@@ -302,7 +313,7 @@
         <div class="hero">
             <div class="hero-title">Find real problems, identify solutions, and get the prompts to build them.</div>
             <div class="hero-how">How it works:</div>
-            <div class="hero-sub">Enter in a subreddit name below to scrape posts for problems, generate a project idea, then get a set of prompts for Cursor so you can build the solution and ship it.</div>
+            <div class="hero-sub">Enter a subreddit name to scan up to 5 top posts (max 40 comments each), generate a project idea, then get a set of prompts for Cursor so you can build and ship.</div>
         </div>
         
         <!-- Thin utility-only; usage counters removed from hero area -->
@@ -339,44 +350,44 @@
             
             <div class="form-row">
                 <div class="form-group">
-                    <label for="posts_per_subreddit">Posts to scan</label>
+                    <label for="posts_per_subreddit">Posts to scan (max 5)</label>
                     <input 
                         type="number" 
                         id="posts_per_subreddit" 
                         name="posts_per_subreddit" 
                         value="1" 
                         min="1" 
-                        max="20"
+                        max="5"
                     >
                     <div class="help-text">Select between 1-5 recent posts.</div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="comments_per_post">Comments per post</label>
+                    <label for="comments_per_post">Comments per post (max 40)</label>
                     <input 
                         type="number" 
                         id="comments_per_post" 
                         name="comments_per_post" 
                         value="20" 
                         min="1" 
-                        max="50"
+                        max="40"
                     >
                     <div class="help-text">Pick between 10 - 40 comments to find real pain points.</div>
                 </div>
             </div>
             
             <div class="btn-row">
-                <button type="submit" {% if not can_scrape %}disabled{% endif %}>
-                    {% if can_scrape %}
-                        Find Problems
-                    {% else %}
-                        Quota Exceeded
-                    {% endif %}
-                </button>
+                {% if user_email and is_verified and can_scrape %}
+                    <button type="submit">Find Problems</button>
+                {% elif not user_email or not is_verified %}
+                    <a class="btn-primary" href="/verify">Verify email to find problems</a>
+                {% else %}
+                    <button type="submit" disabled>Quota Exceeded</button>
+                {% endif %}
             </div>
-            {% if not user_email %}
+            {% if not user_email or not is_verified %}
             <div class="help-text" style="text-align:center; margin-top:8px;">
-                Verify your email at the top of this page to unlock 15 scrapes/day!
+                No spam, and no recurring emails.
             </div>
             {% endif %}
             
@@ -402,6 +413,17 @@
 
         <!-- Simple Ideas Dashboard -->
         <div style="margin: 24px 0 10px 0;">
+            {% if feature_manual_ideas and user_email and is_verified and can_scrape %}
+            <div style="margin: 0 0 16px 0; padding:12px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc;">
+                <div style="font-weight:600; color:#111827; margin:0 0 8px 0;">Already have an idea? Generate a build plan from your description</div>
+                <form method="POST" action="/idea/manual" style="margin:0; display:flex; flex-direction:column; gap:8px;">
+                    <textarea name="manual_idea" placeholder="Describe the problem/opportunity, target user, and a rough solution." rows="3" required></textarea>
+                    <div class="btn-row">
+                        <button type="submit" style="width:auto;">Generate plan</button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
             <h3 style="margin: 0 0 10px 0; font-size: 20px;">{% if user_email %}My Ideas{% else %}Sample Ideas{% endif %}</h3>
             <!-- Quick chooser -->
             {% if ideas and ideas|length > 0 %}
@@ -513,6 +535,39 @@
     <script id="selectedIdeaJson" type="application/json">{{ (selected_idea or {}) | tojson }}</script>
     <script>
     (function() {
+        // Upgrade and portal links (lightweight CTA)
+        const up = document.getElementById('upgradeLink');
+        if (up) {
+            up.addEventListener('click', async function(e) {
+                e.preventDefault();
+                try {
+                    const res = await fetch('/billing/checkout', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data && data.url) {
+                        window.location.href = data.url;
+                    } else if (res.ok && data && data.ok) {
+                        alert('Thanks! We\'ll email you when upgrades are available.');
+                    } else {
+                        alert('Unable to start checkout.');
+                    }
+                } catch (_) { alert('Unable to start checkout.'); }
+            });
+        }
+        const portal = document.getElementById('portalLink');
+        if (portal) {
+            portal.addEventListener('click', async function(e) {
+                e.preventDefault();
+                try {
+                    const res = await fetch('/billing/portal', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data && data.url) {
+                        window.location.href = data.url;
+                    } else {
+                        alert('Unable to open billing portal.');
+                    }
+                } catch (_) { alert('Unable to open billing portal.'); }
+            });
+        }
         const form = document.querySelector('form[action="/scrape"]');
         if (!form) return;
         const overlay = document.getElementById('loadingOverlay');

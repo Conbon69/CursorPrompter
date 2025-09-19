@@ -68,6 +68,39 @@ def increment_daily_usage_by(email: Optional[str], amount: int) -> bool:
         print(f"Error incrementing daily usage by amount: {e}")
         return False
 
+def get_month_start_str() -> str:
+    """Return YYYY-MM-01 for current month."""
+    today = date.today()
+    return f"{today.year:04d}-{today.month:02d}-01"
+
+def get_monthly_usage(email: Optional[str]) -> int:
+    """Sum daily_usage counts for the current month for a user (Supabase)."""
+    if not sb or not email:
+        return 0
+    try:
+        month_start = get_month_start_str()
+        today = date.today().isoformat()
+        # Fetch all rows this month and sum counts client-side (sufficient for our scale)
+        resp = (
+            sb.table("daily_usage")
+            .select("count,date")
+            .eq("email", email)
+            .gte("date", month_start)
+            .lte("date", today)
+            .execute()
+        )
+        rows = resp.data or []
+        total = 0
+        for r in rows:
+            try:
+                total += int(r.get("count") or 0)
+            except Exception:
+                continue
+        return total
+    except Exception as e:
+        print(f"Error getting monthly usage: {e}")
+        return 0
+
 def create_usage_table():
     """Create the daily_usage table in Supabase"""
     if not sb:
@@ -125,6 +158,20 @@ def increment_daily_usage_by_fallback(email: Optional[str], amount: int) -> bool
     _usage_store[key] = _usage_store.get(key, 0) + int(amount)
     return True
 
+def get_monthly_usage_fallback(email: Optional[str]) -> int:
+    """Sum fallback daily counters for the current month for this user (supports anonymous)."""
+    from datetime import date as _date
+    today = _date.today()
+    month_prefix = f"{(email or 'anonymous')}_{today.year:04d}-{today.month:02d}-"
+    total = 0
+    for k, v in _usage_store.items():
+        if isinstance(k, str) and k.startswith(month_prefix):
+            try:
+                total += int(v)
+            except Exception:
+                continue
+    return total
+
 # Use fallback if Supabase is not configured
 def get_daily_usage_safe(email: Optional[str]) -> int:
     """Get daily usage with fallback. Anonymous users always use fallback to avoid DB writes."""
@@ -160,3 +207,47 @@ def increment_daily_usage_by_safe(email: Optional[str], amount: int) -> bool:
     if not ok:
         return increment_daily_usage_by_fallback(email, amount)
     return True
+
+def get_monthly_usage_safe(email: Optional[str]) -> int:
+    """Get monthly usage with fallback. Anonymous users always use fallback."""
+    if not sb or not email:
+        return get_monthly_usage_fallback(email)
+    try:
+        return get_monthly_usage(email)
+    except Exception:
+        return get_monthly_usage_fallback(email)
+
+# --- Plan helpers ---
+FREE_PLAN_LIMIT = 30
+STARTER_PLAN_LIMIT = 300
+
+def get_user_plan(email: Optional[str]) -> str:
+    """Return 'starter' if user has active starter subscription; else 'free'."""
+    if not sb or not email:
+        return 'free'
+    try:
+        resp = (
+            sb.table('subscriptions')
+            .select('plan,status,current_period_end')
+            .eq('email', email)
+            .order('updated_at', desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            return 'free'
+        row = rows[0]
+        status = (row.get('status') or '').lower()
+        plan = (row.get('plan') or 'free').lower()
+        if plan == 'starter' and status in ('active','trialing','past_due'):
+            # Optionally, ensure current_period_end is in the future
+            return 'starter'
+        return 'free'
+    except Exception:
+        return 'free'
+
+def get_plan_monthly_limit(plan: str) -> int:
+    if plan == 'starter':
+        return STARTER_PLAN_LIMIT
+    return FREE_PLAN_LIMIT
